@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agentpool": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory", "{ROOT}",
+        "python", "-m", "shared.mcp_bridge",
+        "{NAME}", "{SELF_ID}", "{POOL_URL}", "{LOCAL_URL}"
+      ]
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "a2a": {
+      "command": "uv",
+      "args": [
+        "run", "--directory", "D:/GitRepo-AI/CrossAgentMCP",
+        "python", "-m", "crossagent.a2a_bridge",
+        "lead", "lead",
+        "http://127.0.0.1:9103",
+        "http://127.0.0.1:9100",
+        "{\"writer\":\"http://127.0.0.1:9101\",\"critic\":\"http://127.0.0.1:9102\"}"
+      ]
+    }
+  }
+}

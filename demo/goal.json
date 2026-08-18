@@ -1,0 +1,11 @@
+{
+  "goal": "Co-author a short design document (demo/output/design.md) describing a URL-shortener service, including: (1) a problem statement, (2) API endpoints, (3) storage design, and (4) a risks/limitations section. All three agents must agree the document is complete and correct.",
+  "poolUrl": "http://127.0.0.1:9100",
+  "orchestratorToken": "demo-orchestrator-token",
+  "maxTurns": 12,
+  "agents": [
+    {"id": "writer", "role": "writer", "dir": "agents/writer", "url": "http://127.0.0.1:9101", "token": "demo-writer-token"},
+    {"id": "critic", "role": "critic", "dir": "agents/critic", "url": "http://127.0.0.1:9102", "token": "demo-critic-token"},
+    {"id": "lead", "role": "lead", "dir": "agents/lead", "url": "http://127.0.0.1:9103", "token": "demo-lead-token"}
+  ]
+}
