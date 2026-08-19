@@ -43,6 +43,8 @@ pool/server.py           pool entry (default :9100)
 agent-template/          parametrized agent (server.py, CLAUDE.md, .mcp.json, make_agent.py)
 demo/simulated_agent.py  deterministic agent (no LLM) exercising the full loop
 demo/run_session.py      end-to-end runner (pool + N agents -> satisfied/failed)
+demo/real_review.py      runner that plays real LLM-agent review output through the pool FSM
+demo/real_review_payload.json  example payload (3 agents review torchimpulse, 3 critiques)
 tests/                   pool / session / consensus tests
 ```
 
@@ -88,6 +90,46 @@ Note: `make_agent.py` only scaffolds the agent — it does **not** launch
 Termination guards (exactly two): **max iterations** (a cap on total critiques,
 `session.iteration` is incremented only in `critique_send`) and **global timeout**.
 Both → `failed`. There is no separate no-progress detector.
+
+## Real review demo (LLM agents, not simulation)
+
+`demo/run_session.py` drives deterministic simulated agents whose "work" is a
+token-matching game (`APPROVED` substring) — they prove the loop's plumbing but
+never read real code. `demo/real_review.py` is the counterpart that runs the same
+pool FSM over **real LLM-agent output**, so the critique/self-improve steps carry
+actual review content:
+
+1. **Review** — N real agents each review a slice of a target repo and produce
+   findings.
+2. **Critique** — each agent critiques a peer's findings (round-robin), catching
+   wrong file references, false positives, and missed defects.
+3. **Revise** — each agent self-improves its findings in response to the critique
+   it received.
+4. The outputs are collected into a payload JSON, and `demo/real_review.py` plays
+   them back through the pool control plane
+   (`register → join → started → finished → critique → resolve → finished → satisfy`),
+   ending when the session converges to `satisfied`.
+
+```bash
+uv run python demo/real_review.py --payload demo/real_review_payload.json
+```
+
+Payload shape (see `demo/real_review_payload.json`):
+
+```json
+{
+  "goal": "Review ... and converge on a severity-ranked defect list.",
+  "agents": [
+    {"id": "agent-1", "role": "...", "findings": "...",
+     "critique_of": "agent-2", "critique_text": "...", "revised": "..."}
+  ]
+}
+```
+
+The coordination (state machine, consensus, termination guards) is the real pool;
+the agent work is real review content produced upstream by the LLM agents and
+replayed here. The P2P `message/send` data plane is not exercised in this path —
+it remains for real Claude Code agents via `shared/mcp_bridge.py`.
 
 ## Security scope
 

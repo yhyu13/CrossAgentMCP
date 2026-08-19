@@ -1,0 +1,29 @@
+{
+  "goal": "Review F:/XD/git-repo/torchimpulse and converge on a severity-ranked defect list every member agrees on.",
+  "agents": [
+    {
+      "id": "agent-1",
+      "role": "package_stat reviewer (critic of agent-2)",
+      "findings": "8 findings: [high] attribution.attribute()/attribute_all() no idempotency guard -> duplicate actions rows; [medium] seed_if_empty keys only on builds count; [medium] build_row_id None -> NULL build_id; [low] FK pragma only after init_schema; [low] success branch returns attributed:True contradicting docstring; [low] UPDATE relies on insert_action commit; [low] owner NULL -> '待定' alert; [low] baseline/success_rate 0.0 vs empty.",
+      "critique_of": "agent-2",
+      "critique_text": "agent-2: file attribution wrong — compute_* / load_records live in top-level torchimpulse/board.py, not package_stat/board.py; finding #2 (unbounded cache) is a slow leak not HIGH -> downgrade MEDIUM; finding #4 reversed range is more likely an unhandled RuntimeError 500 than a silent 0 -> downgrade; MISSED: /api/interval calls summarize_p4_dict with no timeout (subprocess hangs), and both compute paths are unguarded -> bare 500.",
+      "revised": "Final 8: [high] attribution.py:19-45 + 60-65 idempotency gap -> duplicate actions; [medium] knowledge.match_entry fail-build ignores pkg_type -> entries[0] mis-attribution (COOK-001 vs COOK-102); [medium] seed_if_empty partial-state UNIQUE; [low] build_row_id None; [low] FK pragma scope; [low] success attributed:True contract; [low] implicit-commit gap; [low] baseline/success_rate 0.0 ambiguity."
+    },
+    {
+      "id": "agent-2",
+      "role": "chat/server reviewer (critic of agent-3)",
+      "findings": "8 findings: [high] compute_board([]) min/max over empty -> ValueError; [high] _INTERVAL_CACHE unbounded; [medium] SESSIONS+turns unbounded; [medium] /api/interval no lo>hi validation; [medium] board degraded dropped; [low] note field unused; [low] days=0 treated as all; [low] pkg_delta cm/pm truthiness.",
+      "critique_of": "agent-3",
+      "critique_text": "agent-3: finding #1 changes() greedy regex is dead code (desc overwritten at summary.py:165) -> LOW not HIGH, drop the false 'silently dropped CLs' claim; #2/#3/#4 are LOW; #5 files_truncated and #6 int(cl) are FALSE POSITIVES (drop); MISSED: load.py:21-23 lexicographic sorted(...)[-1] picks the TestUGS test-stream bundle over main-line; MISSED: is_merge never set in the live path so merge_count is always 0.",
+      "revised": "Final 10: [high] board.py:234-235 empty min/max -> ValueError; [high] server.py:36 no timeout on summarize_p4_dict (subprocess hangs); [medium] _INTERVAL_CACHE unbounded; [medium] SESSIONS/turns unbounded; [medium] board degraded dropped; [medium] unguarded compute paths -> bare 500; [low] /api/interval lo>hi; [low] note unused; [low] days=0; [low] pkg_delta truthiness."
+    },
+    {
+      "id": "agent-3",
+      "role": "p4_interval reviewer (critic of agent-1)",
+      "findings": "8 findings: [high] changes() greedy desc regex '?(.*)'?$ swallows quote; [medium] _flag_path substring engine/content; [medium] is_engine case mismatch; [medium] empty-path shape omits keys; [medium] files_truncated under-count; [medium] int(cl) assumes numeric; [low] action regex truncates move/add to move; [low] desc header filter.",
+      "critique_of": "agent-1",
+      "critique_text": "agent-1: #1 idempotency AGREE (HIGH fair); #3 build_row_id None is unreachable via current callers and raises NOT NULL IntegrityError, not silent NULL -> LOW; #7 '待定' is a deliberate visible placeholder, not masking -> not a bug; MISSED: knowledge.match_entry only matches pkg_type for slow builds, fail builds take entries[0] -> wrong action/team; coverage() denominator is actually correct.",
+      "revised": "Final 8: [high] load.py:21-23 lexicographic latest-bundle picks TestUGS stream (verified vs live data); [medium] is_merge never set in live path -> merge_count always 0; [low] changes() regex dead-code quote; [low] _flag_path substring (no real misclassification); [low] is_engine case; [low] empty-path shape; [low] action truncation; [low] desc header filter."
+    }
+  ]
+}

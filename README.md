@@ -60,7 +60,31 @@ make demo        # full headless 3-agent demo (writer / critic / lead) — needs
 `demo/goal.json` asks three agents — **writer**, **critic**, **lead** — to co-author
 `demo/output/design.md` (a URL-shortener design) until all three declare satisfied.
 
+### Code-review demo (torchimpulse)
+
+Two extra drivers run the same pool against a real codebase
+(`F:\XD\git-repo\torchimpulse`):
+
+```bash
+uv run python demo/review_demo_scripted.py   # deterministic stub agents (no claude, no cost)
+uv run python demo/review_demo.py            # full autonomous 3-agent review — needs `claude`
+```
+
+- `review_demo_scripted.py` replays the full lifecycle — register → session → artifact →
+  critique (satisfaction reset) → auth-403 on spoofed action → peer-A2A send/respond →
+  resolve → unanimous convergence — with real review findings as content.
+- `review_demo.py` runs **writer / critic / lead** headlessly (`claude -p`) to co-author
+  `torchimpulse/A2A_REVIEW.md` and converge (5 turns, all satisfied, 0 open critiques).
+
 ## Notes
+
+- `.mcp.json` files hardcode the repo path `D:/GitRepo-AI/CrossAgentMCP` (matching the
+  claude-a2a reference); update it if you relocate the repo.
+- The pool and agent servers keep state **in memory**; they reset on restart.
+- The headless agents run `claude -p`, which here targets a gateway
+  (`llm-proxy.tapsvc.com`). Pin the model in `~/.claude/settings.json` (e.g.
+  `ANTHROPIC_MODEL=deepseek/deepseek-v4-pro`); Claude Code's bare default model name is
+  rejected by that gateway.
 
 - `.mcp.json` files hardcode the repo path `D:/GitRepo-AI/CrossAgentMCP` (matching the
   claude-a2a reference); update it if you relocate the repo.
