@@ -1,0 +1,40 @@
+{
+  "mcp": {
+    "a2a-writer": {
+      "type": "local",
+      "command": [
+        "uv", "run", "--directory", "C:/Git-repo-AI/CrossAgentMCP",
+        "python", "-m", "crossagent.a2a_bridge",
+        "writer", "writer",
+        "http://127.0.0.1:9101",
+        "http://127.0.0.1:9100",
+        "{\"critic\":\"http://127.0.0.1:9102\",\"lead\":\"http://127.0.0.1:9103\"}"
+      ],
+      "enabled": true
+    },
+    "a2a-critic": {
+      "type": "local",
+      "command": [
+        "uv", "run", "--directory", "C:/Git-repo-AI/CrossAgentMCP",
+        "python", "-m", "crossagent.a2a_bridge",
+        "critic", "critic",
+        "http://127.0.0.1:9102",
+        "http://127.0.0.1:9100",
+        "{\"writer\":\"http://127.0.0.1:9101\",\"lead\":\"http://127.0.0.1:9103\"}"
+      ],
+      "enabled": true
+    },
+    "a2a-lead": {
+      "type": "local",
+      "command": [
+        "uv", "run", "--directory", "C:/Git-repo-AI/CrossAgentMCP",
+        "python", "-m", "crossagent.a2a_bridge",
+        "lead", "lead",
+        "http://127.0.0.1:9103",
+        "http://127.0.0.1:9100",
+        "{\"writer\":\"http://127.0.0.1:9101\",\"critic\":\"http://127.0.0.1:9102\"}"
+      ],
+      "enabled": true
+    }
+  }
+}

@@ -116,6 +116,28 @@ A2A（Google 的 Agent2Agent 协议）只定义了「两个 agent 之间如何�
 uv sync          # Python 3.11+ venv + 依赖
 ```
 
+## 为 Kilo / Claude Code / Codex 安装 `a2a` MCP 桥
+
+每个 agent 角色（writer / critic / lead）都暴露同一个 stdio MCP 桥
+（`crossagent.a2a_bridge`），只是身份、本地端口和对等映射不同。三个工具都已注册
+（这里的路径按本仓库 `C:/Git-repo-AI/CrossAgentMCP` 写死；迁移后请同步调整）：
+
+| 工具        | 配置文件                       | 服务器名 |
+|-------------|--------------------------------|----------|
+| Kilo        | `kilo.json`（`mcp` 字段）      | `a2a-writer`、`a2a-critic`、`a2a-lead` |
+| Claude Code | `agents/<role>/.mcp.json`      | `a2a`（从该 agent 目录运行 Claude 时加载） |
+| Codex       | `.codex/config.toml`           | `a2a-writer`、`a2a-critic`、`a2a-lead` |
+
+桥的工具只有在池和 agent A2A 服务器都起来后才能工作。启停脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start-servers.ps1
+powershell -ExecutionPolicy Bypass -File scripts/stop-servers.ps1
+```
+
+（`start-servers.ps1 -WithDemoAuth` 会镜像 `demo/goal.json` 里的 token；默认运行时池
+关闭认证。）
+
 ## 使用
 
 ```bash
@@ -145,8 +167,8 @@ uv run python demo/review_demo.py            # 完整自主 3-agent 评审——
 
 ## 注意事项
 
-- 各 `.mcp.json` 文件硬编码了仓库路径 `D:/GitRepo-AI/CrossAgentMCP`（与 claude-a2a 参考
-  实现一致）；若迁移仓库请同步更新。
+- 各 `.mcp.json` / `kilo.json` / `.codex/config.toml` 文件硬编码了仓库路径
+  `C:/Git-repo-AI/CrossAgentMCP`；若迁移仓库请同步更新。
 - 池与 agent 服务器都把状态保存在**内存**里；重启即重置。
 - 无头 agent 运行的是 `claude -p`，此处它指向一个网关（`llm-proxy.tapsvc.com`）。请在
   `~/.claude/settings.json` 中钉住模型（例如 `ANTHROPIC_MODEL=deepseek/deepseek-v4-pro`）；

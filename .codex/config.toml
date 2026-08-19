@@ -1,0 +1,37 @@
+# OpenAI Codex CLI — MCP servers for the CrossAgentMCP A2A pool.
+# Each server runs one role's a2a bridge (crossagent/a2a_bridge.py).
+# Requires: uv installed, `uv sync` done, and the pool + agent A2A servers
+# running (see scripts/start-servers.ps1).
+
+[mcp_servers.a2a-writer]
+command = "uv"
+args = [
+  "run", "--directory", "C:/Git-repo-AI/CrossAgentMCP",
+  "python", "-m", "crossagent.a2a_bridge",
+  "writer", "writer",
+  "http://127.0.0.1:9101",
+  "http://127.0.0.1:9100",
+  '{"critic":"http://127.0.0.1:9102","lead":"http://127.0.0.1:9103"}'
+]
+
+[mcp_servers.a2a-critic]
+command = "uv"
+args = [
+  "run", "--directory", "C:/Git-repo-AI/CrossAgentMCP",
+  "python", "-m", "crossagent.a2a_bridge",
+  "critic", "critic",
+  "http://127.0.0.1:9102",
+  "http://127.0.0.1:9100",
+  '{"writer":"http://127.0.0.1:9101","lead":"http://127.0.0.1:9103"}'
+]
+
+[mcp_servers.a2a-lead]
+command = "uv"
+args = [
+  "run", "--directory", "C:/Git-repo-AI/CrossAgentMCP",
+  "python", "-m", "crossagent.a2a_bridge",
+  "lead", "lead",
+  "http://127.0.0.1:9103",
+  "http://127.0.0.1:9100",
+  '{"writer":"http://127.0.0.1:9101","critic":"http://127.0.0.1:9102"}'
+]
