@@ -1,0 +1,100 @@
+{
+  "target": "D:\\GitRepo-My\\radiance-cascades-demo\\3d\\doc",
+  "model": "(inherit)",
+  "mono": {
+    "turns": [
+      {
+        "agent": "mono",
+        "turn": 0,
+        "duration_s": 555.8057392998599,
+        "input_tokens": 127521,
+        "output_tokens": 33001,
+        "cache_read_tokens": 1646592,
+        "cache_creation_tokens": 0,
+        "cost_usd": 2.285926
+      }
+    ],
+    "converged": true,
+    "totals": {
+      "wall_s": 555.8057392998599,
+      "input_tokens": 127521,
+      "output_tokens": 33001,
+      "cache_read_tokens": 1646592,
+      "cost_usd": 2.285926
+    }
+  },
+  "multi": {
+    "turns": [
+      {
+        "agent": "writer",
+        "turn": 0,
+        "duration_s": 266.81880449992605,
+        "input_tokens": 106791,
+        "output_tokens": 14848,
+        "cache_read_tokens": 968576,
+        "cache_creation_tokens": 0,
+        "cost_usd": 1.389443
+      },
+      {
+        "agent": "critic",
+        "turn": 1,
+        "duration_s": 317.0397294999566,
+        "input_tokens": 77819,
+        "output_tokens": 17679,
+        "cache_read_tokens": 1015424,
+        "cache_creation_tokens": 0,
+        "cost_usd": 1.338782
+      },
+      {
+        "agent": "lead",
+        "turn": 2,
+        "duration_s": 181.05365150002763,
+        "input_tokens": 69833,
+        "output_tokens": 9293,
+        "cache_read_tokens": 563072,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.8630260000000001
+      },
+      {
+        "agent": "writer",
+        "turn": 3,
+        "duration_s": 42.40734239993617,
+        "input_tokens": 63611,
+        "output_tokens": 1680,
+        "cache_read_tokens": 213760,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.466935
+      },
+      {
+        "agent": "critic",
+        "turn": 4,
+        "duration_s": 47.724914899794385,
+        "input_tokens": 68595,
+        "output_tokens": 1923,
+        "cache_read_tokens": 227712,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.5049060000000001
+      }
+    ],
+    "converged": true,
+    "satisfaction": {
+      "writer": true,
+      "critic": true,
+      "lead": true
+    },
+    "totals": {
+      "wall_s": 855.0444427996408,
+      "input_tokens": 386649,
+      "output_tokens": 45423,
+      "cache_read_tokens": 2988544,
+      "cost_usd": 4.563092
+    }
+  },
+  "overhead": {
+    "turns_x": 5.0,
+    "wall_x": 1.53838721398726,
+    "in_tok_x": 3.0320417813536595,
+    "out_tok_x": 1.3764128359746675,
+    "cost_x": 1.996167854952435
+  }
+}
