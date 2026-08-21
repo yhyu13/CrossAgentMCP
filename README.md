@@ -120,7 +120,7 @@ uv sync          # Python 3.11+ venv + 依赖
 
 每个 agent 角色（writer / critic / lead）都暴露同一个 stdio MCP 桥
 （`crossagent.a2a_bridge`），只是身份、本地端口和对等映射不同。三个工具都已注册
-（这里的路径按本仓库 `C:/Git-repo-AI/CrossAgentMCP` 写死；迁移后请同步调整）：
+（路径钉在 `D:/GitRepo-AI/CrossAgentMCP`；若再迁移请同步调整）：
 
 | 工具        | 配置文件                       | 服务器名 |
 |-------------|--------------------------------|----------|
@@ -165,10 +165,37 @@ uv run python demo/review_demo.py            # 完整自主 3-agent 评审——
 - `review_demo.py` 无头运行 **writer / critic / lead**（`claude -p`）共同撰写
   `torchimpulse/A2A_REVIEW.md` 并收敛（5 轮，全员满意，0 条未关闭批判）。
 
+### 文档树评审 + 单 agent 对照（radiance `3d/doc`）
+
+同一棵 ~589 文件的文档树、同一模型（`deepseek/deepseek-v4-pro`），`demo/compare_radiance.py`
+对照 **单 agent 融合一轮** 与 **3-agent 编排器**：
+
+| 模式 | 轮次 | 墙钟 | 成本 | 收敛 |
+|---|---|---|---|---|
+| mono-agent | 1 | 556 s | $2.29 | 是（`MONO_REVIEW.md`） |
+| 3-agent（本仓库 `crossagent/`） | 5 | 855 s | $4.56 | 是（三方 `true`） |
+
+相对 mono：墙钟 ×1.54、input token ×3.03、成本 ×2.00。产出篇幅相当（18.5 KB vs 19.2 KB）。
+原始数字在 `demo/output/radiance_comparison.json`。
+
+```bash
+uv run python demo/compare_radiance.py          # 需已运行 scripts/start-servers.ps1
+```
+
+### 与子目录 `1/` 的关系
+
+`1/` 是**另一套**实现（从 `claude-a2a` 长出来的池：slash 方法名、SSE watch、无
+bearer 身份、无头编排器不是一等公民）。同一棵 radiance 树的第一次真 `claude -p`
+循环（`1/demo/compare_radiance.py`，自动选端口以免撞 :9100）跑满 9 轮仍停在
+`reviewing`（lead 未声明满意），成本 $7.57。差距主要来自**循环契约**——根编排器每轮
+强制 `declare_satisfaction`，`1/` 的 `satisfy()` 只能单向 `True`——不是评审质量
+更差（`A2A_REVIEW_1.md` 同样有 `file:line` 的 Critical 发现）。详见
+[JOURNEY.md](JOURNEY.md) 2026-08-21 节与 [1/README.md](1/README.md)。
+
 ## 注意事项
 
 - 各 `.mcp.json` / `kilo.json` / `.codex/config.toml` 文件硬编码了仓库路径
-  `C:/Git-repo-AI/CrossAgentMCP`；若迁移仓库请同步更新。
+  `D:/GitRepo-AI/CrossAgentMCP`；若迁移仓库请同步更新。
 - 池与 agent 服务器都把状态保存在**内存**里；重启即重置。
 - 无头 agent 运行的是 `claude -p`，此处它指向一个网关（`llm-proxy.tapsvc.com`）。请在
   `~/.claude/settings.json` 中钉住模型（例如 `ANTHROPIC_MODEL=deepseek/deepseek-v4-pro`）；

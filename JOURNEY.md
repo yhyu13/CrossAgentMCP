@@ -184,6 +184,99 @@ it yet).
 
 ---
 
+## 2026-08-21 — Repo migration, a real docs review, and measuring single-vs-multi
+
+The repo moved from `C:/Git-repo-AI/` to `D:/GitRepo-AI/`. All hardcoded
+`--directory` paths were repointed in `kilo.json` and the three
+`agents/*/.mcp.json` (`.codex/config.toml` still pending if Codex is used).
+
+### Second real external review: radiance-cascades-demo `3d/doc`
+
+The three agents reviewed a 591-file documentation tree (a 3D radiance-cascades
+GI demo's build log), driven against the *already-running* servers
+(`scripts/start-servers.ps1`, open pool) via a new `demo/review_radiance.py` that
+also dumps the full activity-log + critique-thread transcript. Converged:
+`writer/critic/lead = true/true/true`, one critique opened and resolved. The
+review (`…/3d/doc/A2A_REVIEW.md`) landed 1 Critical / 5 High / 4 Medium / 3 Low,
+all `file:line`-cited — headline finding: the flagship `(4/D²)` consumer fix
+documented in `journey.md:88` is absent from committed code.
+
+### Measured single-agent vs 3-agent (same task, same model)
+
+| mode | turns | wall | cost | judge /25 |
+|---|---|---|---|---|
+| single-monolithic | 1 | 38 s | $0.24 | 25 |
+| single-iterative(6) | 6 | 650 s | $2.01 | 25 |
+| 3-agent | 6 | 265 s | $2.13 | 10* |
+
+`*` the 10/25 is a measurement artifact: the goal said "do not write files", so
+the pool's reasoning stayed in the activity log and the judge only saw the lead's
+status line — the pool holds coordination state, not the work product.
+
+Two durable conclusions:
+
+1. **Cost**: 3-agent ≈ single-iterative (~$2.1, ×1.06), both ~×9 the monolithic
+   baseline. The pool sends ~1.06M prompt tokens (306K fresh + 755K cache-read)
+   vs 260K all-fresh for iterative, but the prompt-cache discount flattens the bill.
+2. **Time**: the pool is *faster* than a same-budget single self-reviewer
+   (265 s vs 650 s) — a single agent re-reads its growing draft each round
+   (output balloons 1.2K→6.7K tokens/round), while the pool keeps each turn flat.
+
+### Head-to-head on the same tree: mono vs 3-agent (root pool)
+
+`demo/compare_radiance.py` attached to the running stack and measured a **fused
+single-agent** turn against the **3-agent orchestrator** on the same radiance
+`3d/doc` review (same model, `claude -p --output-format json`):
+
+| mode | turns | wall | in_tok | out_tok | cost | converged |
+|---|---|---|---|---|---|---|
+| mono-agent | 1 | 556 s | 128k | 33k | **$2.29** | yes (`MONO_REVIEW.md`) |
+| 3-agent (root) | 5 | 855 s | 387k | 45k | **$4.56** | yes (all three true) |
+
+Overhead vs mono: wall ×1.54, in_tok ×3.03, cost ×2.00. Artifacts:
+`demo/output/{MONO_REVIEW,A2A_REVIEW,radiance_comparison}.json`. Committed
+`ee9f8e7`.
+
+This is the apples-to-apples measurement the toy payments-ledger run was not:
+same heavy tree, same write-a-review goal. A2A is still not cheaper; it buys
+role split + forced re-confirmation, and on this task it *did* produce a
+comparable-length review (18.5 KB vs 19.2 KB).
+
+### Same tree through the `1/` pool (first live `claude -p` loop)
+
+`1/` previously only had simulated agents and JSON-payload replay. A new
+`1/demo/compare_radiance.py` boots that pool on **auto-selected ports** (so it
+does not collide with root :9100–9103) and runs real `claude -p` agents through
+`shared.mcp_bridge`:
+
+| impl | 3-agent turns | wall | cost | converged |
+|---|---|---|---|---|
+| root `crossagent/` | 5 | 855 s | $4.56 | **yes** `{w,c,l: true}` |
+| `1/` pool | 9 | 1293 s | $7.57 | **no** — `reviewing`, lead false |
+
+Not a systematic proof that `1/` is “worse.” The cost/wall gap is mostly *did
+not stop*: root’s orchestrator **requires** `declare_satisfaction` every turn;
+`1/`’s live prompt only asks, and `satisfy()` is one-way `True` (no
+`satisfied=false`). Lead still wrote `A2A_REVIEW_1.md` (20 KB, C1/C2
+`file:line`-cited). Structural deltas (protocol, auth, FSM, who advances time)
+are in README § root vs `1/`.
+
+### Executed the documented next lever: concurrent scheduling
+
+`Orchestrator` gained `schedule: "parallel"` (default `"serial"` unchanged): each
+round runs every agent concurrently on the same pre-round snapshot (bulk-
+synchronous), then posts their `finished` events together. `maxTurns` and the
+no-progress guard both count individual agent runs (a parallel round contributes
+`len(agents)` runs to each), so serial/parallel are comparable — though a round is
+atomic, so the turn budget overshoots by up to `len(agents)-1`. A mid-round
+failure persists the round's successes, marks the session failed, and propagates
+(same failure surface as serial, without discarding completed work). Covered by
+`test_parallel_schedule_runs_agents_concurrently_and_converges` (max concurrency
+== 3, convergence) and `test_parallel_schedule_persists_successes_when_an_agent_fails`
+(mid-round failure keeps sibling work); 26 tests pass.
+
+---
+
 ## Where it stands
 
 - [x] A2A pool control plane (registry / sessions / activity / critique / goal)
@@ -194,6 +287,10 @@ it yet).
 - [x] Unit tests + smoke + benchmark harness
 - [x] Real-agent review demo converging on torchimpulse (5 turns)
 - [x] First real external critique run through the pool (M4_kimi, parked in `revising`)
-- [ ] Concurrent (parallel) agent scheduling
+- [x] Concurrent (parallel) agent scheduling (`schedule: "parallel"`; serial default)
+- [x] Radiance `3d/doc` 3-agent review converging (root pool, 5 turns)
+- [x] Mono vs 3-agent measured on that tree (root: cost ×2.00, wall ×1.54, converged)
+- [x] First live `claude -p` loop through the `1/` pool (9 turns, lead never satisfied)
 - [ ] Long-term state persistence (pool is in-memory, resets on restart)
 - [ ] A run where the writer actually *resolves* the 8 open M4_kimi critique threads
+- [ ] `1/` live loop with a mandatory per-turn satisfaction contract (to match root)

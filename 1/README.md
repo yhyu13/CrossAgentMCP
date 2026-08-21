@@ -45,6 +45,8 @@ demo/simulated_agent.py  deterministic agent (no LLM) exercising the full loop
 demo/run_session.py      end-to-end runner (pool + N agents -> satisfied/failed)
 demo/real_review.py      runner that plays real LLM-agent review output through the pool FSM
 demo/real_review_payload.json  example payload (3 agents review torchimpulse, 3 critiques)
+demo/compare_radiance.py live mono vs 3-agent `claude -p` driver (auto ports)
+demo/output/             radiance_comparison.json + MONO/A2A_REVIEW_1.md copies
 tests/                   pool / session / consensus tests
 ```
 
@@ -130,6 +132,29 @@ The coordination (state machine, consensus, termination guards) is the real pool
 the agent work is real review content produced upstream by the LLM agents and
 replayed here. The P2P `message/send` data plane is not exercised in this path —
 it remains for real Claude Code agents via `shared/mcp_bridge.py`.
+
+## Live `claude -p` comparison (radiance `3d/doc`)
+
+`demo/compare_radiance.py` is the first **live** loop for this pool (not replay):
+it auto-selects free ports, scaffolds writer/critic/lead, boots pool + A2A
+servers, and runs real `claude -p --output-format json` turns.
+
+```bash
+uv run python demo/compare_radiance.py          # from 1/; --mono-only / --multi-only
+```
+
+First measured run against `D:\GitRepo-My\radiance-cascades-demo\3d\doc`:
+
+| mode | turns | wall | cost | converged |
+|---|---|---|---|---|
+| mono-agent | 1 | 274 s | $1.59 | yes (`MONO_REVIEW_1.md`) |
+| 3-agent (`1/` pool) | 9 | 1293 s | $7.57 | **no** — `reviewing`, lead unsatisfied |
+
+Same tree on the **root** `crossagent/` pool (mandatory per-turn
+`declare_satisfaction`) converged in 5 turns / $4.56. `1/` still produced a
+grounded review (`A2A_REVIEW_1.md`); the extra bill is four turns that never
+closed because `satisfy()` is one-way `True` and the live prompt does not force
+a declare every turn. Raw numbers: `demo/output/radiance_comparison.json`.
 
 ## Security scope
 

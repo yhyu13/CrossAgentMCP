@@ -1,0 +1,142 @@
+{
+  "impl": "1/",
+  "target": "D:\\GitRepo-My\\radiance-cascades-demo\\3d\\doc",
+  "model": "(inherit)",
+  "mono": {
+    "turns": [
+      {
+        "agent": "mono",
+        "turn": 0,
+        "duration_s": 273.67954559996724,
+        "input_tokens": 139424,
+        "output_tokens": 17057,
+        "cache_read_tokens": 938496,
+        "cache_creation_tokens": 0,
+        "cost_usd": 1.5927930000000001
+      }
+    ],
+    "converged": true,
+    "totals": {
+      "wall_s": 273.67954559996724,
+      "input_tokens": 139424,
+      "output_tokens": 17057,
+      "cache_read_tokens": 938496,
+      "cost_usd": 1.5927930000000001
+    }
+  },
+  "multi": {
+    "turns": [
+      {
+        "agent": "writer",
+        "turn": 0,
+        "duration_s": 320.90611839992926,
+        "input_tokens": 101407,
+        "output_tokens": 22343,
+        "cache_read_tokens": 1164800,
+        "cache_creation_tokens": 0,
+        "cost_usd": 1.64801
+      },
+      {
+        "agent": "critic",
+        "turn": 1,
+        "duration_s": 260.1174590999726,
+        "input_tokens": 84902,
+        "output_tokens": 16095,
+        "cache_read_tokens": 1408384,
+        "cache_creation_tokens": 0,
+        "cost_usd": 1.531077
+      },
+      {
+        "agent": "lead",
+        "turn": 2,
+        "duration_s": 130.56253640004434,
+        "input_tokens": 59532,
+        "output_tokens": 7558,
+        "cache_read_tokens": 394880,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.6840499999999999
+      },
+      {
+        "agent": "writer",
+        "turn": 3,
+        "duration_s": 157.03076729993336,
+        "input_tokens": 63609,
+        "output_tokens": 9885,
+        "cache_read_tokens": 548992,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.8396659999999999
+      },
+      {
+        "agent": "critic",
+        "turn": 4,
+        "duration_s": 173.8556670998223,
+        "input_tokens": 66648,
+        "output_tokens": 9171,
+        "cache_read_tokens": 1143296,
+        "cache_creation_tokens": 0,
+        "cost_usd": 1.1341629999999998
+      },
+      {
+        "agent": "lead",
+        "turn": 5,
+        "duration_s": 65.3120202999562,
+        "input_tokens": 54099,
+        "output_tokens": 3024,
+        "cache_read_tokens": 211456,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.45182300000000003
+      },
+      {
+        "agent": "writer",
+        "turn": 6,
+        "duration_s": 32.648891099961475,
+        "input_tokens": 52734,
+        "output_tokens": 1131,
+        "cache_read_tokens": 46848,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.315369
+      },
+      {
+        "agent": "critic",
+        "turn": 7,
+        "duration_s": 66.2783695999533,
+        "input_tokens": 53431,
+        "output_tokens": 3235,
+        "cache_read_tokens": 95744,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.39590200000000003
+      },
+      {
+        "agent": "lead",
+        "turn": 8,
+        "duration_s": 85.85864340001717,
+        "input_tokens": 54556,
+        "output_tokens": 4286,
+        "cache_read_tokens": 377600,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.5687300000000001
+      }
+    ],
+    "converged": false,
+    "session_state": "reviewing",
+    "satisfaction": {
+      "writer": true,
+      "critic": true,
+      "lead": false
+    },
+    "totals": {
+      "wall_s": 1292.57047269959,
+      "input_tokens": 590918,
+      "output_tokens": 76728,
+      "cache_read_tokens": 5392000,
+      "cost_usd": 7.568790000000001
+    }
+  },
+  "overhead": {
+    "turns_x": 9.0,
+    "wall_x": 4.72293415229839,
+    "in_tok_x": 4.238280353454211,
+    "out_tok_x": 4.498329131734772,
+    "cost_x": 4.751898080918236
+  }
+}
