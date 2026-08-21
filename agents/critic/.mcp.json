@@ -3,7 +3,7 @@
     "a2a": {
       "command": "uv",
       "args": [
-        "run", "--directory", "C:/Git-repo-AI/CrossAgentMCP",
+        "run", "--directory", "D:/GitRepo-AI/CrossAgentMCP",
         "python", "-m", "crossagent.a2a_bridge",
         "critic", "critic",
         "http://127.0.0.1:9102",

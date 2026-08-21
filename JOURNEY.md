@@ -275,6 +275,29 @@ failure persists the round's successes, marks the session failed, and propagates
 == 3, convergence) and `test_parallel_schedule_persists_successes_when_an_agent_fails`
 (mid-round failure keeps sibling work); 26 tests pass.
 
+### Efficiency-only comparison + how-to-run guide (committed)
+
+Three more artifacts landed the same day:
+
+- `demo/compare_efficiency.py` — the head-to-head efficiency run *without* a judge:
+  one fused single-agent turn vs the 3-agent orchestrator on the payments-ledger
+  question. Measured: single 47.6 s / $0.24 (41.7k in-tok) vs 3-agent 313 s / $2.22
+  (332k in-tok, 6 turns) — cost ×9.2, wall ×6.6. Same shape as the quality run
+  above: the pool is strictly more expensive than one fused turn; it buys role
+  split + enforced re-confirmation, not speed.
+- `demo/compare_quality.py` + `demo/compare_efficiency.py` are now the canonical
+  single-vs-multi harnesses (the quality one adds a blind judge; table above).
+  `demo/review_radiance.py` attaches to the already-running stack to review a tree
+  and dump the full activity/critique transcript.
+- README gained a「快速上手 root vs `1/`」section: explicit
+  `start-servers.ps1` / `stop-servers.ps1` commands for root, and
+  `run_session.py` / `real_review.py` / `compare_radiance.py` / `pool.server` for
+  `1/`, plus the `schedule: "parallel"` toggle.
+
+Parallel scheduling, the path migration (`C:/Git-repo-AI` → `D:/GitRepo-AI`), and
+the three new demo scripts + their output JSONs are committed together with this
+entry; 26 tests pass.
+
 ---
 
 ## Where it stands
@@ -291,6 +314,7 @@ failure persists the round's successes, marks the session failed, and propagates
 - [x] Radiance `3d/doc` 3-agent review converging (root pool, 5 turns)
 - [x] Mono vs 3-agent measured on that tree (root: cost ×2.00, wall ×1.54, converged)
 - [x] First live `claude -p` loop through the `1/` pool (9 turns, lead never satisfied)
+- [x] Payments-ledger single-vs-3-agent efficiency + quality comparison (blind judge)
 - [ ] Long-term state persistence (pool is in-memory, resets on restart)
 - [ ] A run where the writer actually *resolves* the 8 open M4_kimi critique threads
 - [ ] `1/` live loop with a mandatory per-turn satisfaction contract (to match root)

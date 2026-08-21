@@ -146,11 +146,22 @@ class Orchestrator:
             "Do not wait for a human.",
         ])
 
+    async def _finish(self, agent: dict[str, Any], output: str, turn: int) -> None:
+        """Record one agent turn's output as a ``finished`` activity event."""
+        output = (output or "").strip()
+        ev = await self.pool.post_activity(self.session_id, agent["id"], "finished",
+                                           payload={"turn": turn, "output": output[:4000]})
+        self.last_seen[agent["id"]] = ev["seq"]
+
     # -- main loop --
     async def run(self) -> dict[str, Any]:
         if not self.session_id:
             await self.create_session()
         assert self.session_id is not None
+        schedule = self.config.get("schedule", "serial")
+        if schedule not in ("serial", "parallel"):
+            raise ValueError(
+                f"unknown schedule {schedule!r} (expected 'serial' or 'parallel')")
 
         turns = 0
         no_progress = 0
@@ -162,20 +173,46 @@ class Orchestrator:
                       f"{json.dumps(status['satisfaction'])}")
                 return status
 
-            agent = self.agents[turns % len(self.agents)]
-            delta = await self.pool.activity_since(self.session_id,
-                                                   self.last_seen[agent["id"]])
-            prompt = self._prompt(agent, status, delta)
-
-            print(f"[orchestrator] turn {turns}: {agent['id']} "
-                  f"(+{len(delta)} new events)")
-            output = await self.runner(agent, prompt)
-            output = (output or "").strip()
-
-            ev = await self.pool.post_activity(self.session_id, agent["id"], "finished",
-                                               payload={"turn": turns, "output": output[:4000]})
-            self.last_seen[agent["id"]] = ev["seq"]
-            turns += 1
+            runs = 0
+            if schedule == "parallel":
+                # Bulk-synchronous round: every agent works on the same pre-round
+                # snapshot, then their ``finished`` events are posted together.
+                items = [(a, await self.pool.activity_since(
+                              self.session_id, self.last_seen[a["id"]]))
+                         for a in self.agents]
+                results = await asyncio.gather(
+                    *[self.runner(a, self._prompt(a, status, d)) for a, d in items],
+                    return_exceptions=True)
+                error: BaseException | None = None
+                for (agent, delta), result in zip(items, results):
+                    if isinstance(result, BaseException):
+                        # Record the first failure but still persist the round's
+                        # successes, so a mid-round timeout does not discard the
+                        # sibling agents' completed (and billed) work.
+                        if error is None:
+                            error = result
+                        print(f"[orchestrator] turn {turns}: {agent['id']} FAILED: "
+                              f"{result!r}")
+                        continue
+                    await self._finish(agent, result, turns)
+                    print(f"[orchestrator] turn {turns}: {agent['id']} "
+                          f"(+{len(delta)} new events)")
+                    turns += 1
+                runs = len(items)
+                if error is not None:
+                    await self.pool.mark_failed(
+                        self.session_id, f"agent failed mid-round: {error}")
+                    raise error
+            else:
+                agent = self.agents[turns % len(self.agents)]
+                delta = await self.pool.activity_since(self.session_id,
+                                                       self.last_seen[agent["id"]])
+                print(f"[orchestrator] turn {turns}: {agent['id']} "
+                      f"(+{len(delta)} new events)")
+                output = await self.runner(agent, self._prompt(agent, status, delta))
+                await self._finish(agent, output, turns)
+                turns += 1
+                runs = 1
 
             # No-progress guard: if satisfaction, the open-critique set, and the
             # count of *substantive* progress events are unchanged for a stretch of
@@ -188,7 +225,7 @@ class Orchestrator:
                    tuple(sorted(status["openCritiques"])),
                    status["progressCount"])
             if sig == last_sig:
-                no_progress += 1
+                no_progress += runs
             else:
                 no_progress = 0
                 last_sig = sig

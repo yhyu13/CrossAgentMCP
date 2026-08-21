@@ -1,0 +1,95 @@
+{
+  "question": "For a payments ledger, is strongly-consistent or eventually-consistent storage the right default?",
+  "single": {
+    "turns": [
+      {
+        "agent": "single",
+        "turn": 0,
+        "duration_s": 47.60918899998069,
+        "input_tokens": 41682,
+        "output_tokens": 1314,
+        "cache_read_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.24125999999999997
+      }
+    ],
+    "totals": {
+      "wall_s": 47.60918899998069,
+      "input_tokens": 41682,
+      "output_tokens": 1314,
+      "cache_read_tokens": 0,
+      "cost_usd": 0.24125999999999997
+    }
+  },
+  "multi": {
+    "turns": [
+      {
+        "agent": "writer",
+        "turn": 0,
+        "duration_s": 34.069865399971604,
+        "input_tokens": 45393,
+        "output_tokens": 772,
+        "cache_read_tokens": 89728,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.291129
+      },
+      {
+        "agent": "critic",
+        "turn": 1,
+        "duration_s": 72.25198590010405,
+        "input_tokens": 48824,
+        "output_tokens": 1808,
+        "cache_read_tokens": 93440,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.33604
+      },
+      {
+        "agent": "lead",
+        "turn": 2,
+        "duration_s": 94.08050429983996,
+        "input_tokens": 71134,
+        "output_tokens": 2558,
+        "cache_read_tokens": 169088,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.504164
+      },
+      {
+        "agent": "writer",
+        "turn": 3,
+        "duration_s": 38.222200100077316,
+        "input_tokens": 55067,
+        "output_tokens": 1386,
+        "cache_read_tokens": 98048,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.359009
+      },
+      {
+        "agent": "critic",
+        "turn": 4,
+        "duration_s": 44.08079899987206,
+        "input_tokens": 56906,
+        "output_tokens": 1421,
+        "cache_read_tokens": 145792,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.39295100000000005
+      },
+      {
+        "agent": "lead",
+        "turn": 5,
+        "duration_s": 30.52292240015231,
+        "input_tokens": 55055,
+        "output_tokens": 739,
+        "cache_read_tokens": 93184,
+        "cache_creation_tokens": 0,
+        "cost_usd": 0.3403419999999999
+      }
+    ],
+    "totals": {
+      "wall_s": 313.2282771000173,
+      "input_tokens": 332379,
+      "output_tokens": 8684,
+      "cache_read_tokens": 689280,
+      "cost_usd": 2.223635
+    }
+  }
+}

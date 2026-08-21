@@ -1,5 +1,8 @@
 """Orchestrator convergence + budget tests with fake (deterministic) agents."""
+import asyncio
+
 import httpx
+import pytest
 import pytest_asyncio
 
 from crossagent.orchestrator import Orchestrator
@@ -74,3 +77,49 @@ async def test_substantive_progress_resets_guard(pool):
     state["sid"] = await orch.create_session()
     status = await orch.run()
     assert status["state"] != "failed"
+
+
+async def test_parallel_schedule_runs_agents_concurrently_and_converges(pool):
+    # With schedule="parallel", every agent in a round runs on the same snapshot at
+    # once (max_active == len(agents)), and the session still converges.
+    state = {"sid": None, "active": 0, "max_active": 0}
+
+    async def runner(agent, prompt):
+        state["active"] += 1
+        state["max_active"] = max(state["max_active"], state["active"])
+        await asyncio.sleep(0.01)
+        await pool.declare_satisfaction(state["sid"], agent["id"], True, "done")
+        state["active"] -= 1
+        return f"{agent['id']} done"
+
+    config = _config([{"id": "a"}, {"id": "b"}, {"id": "c"}])
+    config["schedule"] = "parallel"
+    orch = Orchestrator(config, pool, agent_runner=runner)
+    state["sid"] = await orch.create_session()
+    status = await orch.run()
+    assert status["allSatisfied"] is True
+    assert state["max_active"] == 3
+
+
+async def test_parallel_schedule_persists_successes_when_an_agent_fails(pool):
+    # A mid-round failure must not discard the whole round: sibling agents that
+    # completed still get their ``finished`` events persisted, the session is
+    # marked failed, and the failure propagates.
+    state = {"sid": None}
+
+    async def runner(agent, prompt):
+        if agent["id"] == "b":
+            raise RuntimeError("boom")
+        await asyncio.sleep(0.01)
+        return f"{agent['id']} done"
+
+    config = _config([{"id": "a"}, {"id": "b"}, {"id": "c"}])
+    config["schedule"] = "parallel"
+    orch = Orchestrator(config, pool, agent_runner=runner)
+    state["sid"] = await orch.create_session()
+    with pytest.raises(RuntimeError, match="boom"):
+        await orch.run()
+    assert orch.last_seen["a"] > 0
+    assert orch.last_seen["c"] > 0
+    assert orch.last_seen["b"] == 0
+    assert (await pool.session_status(state["sid"]))["state"] == "failed"

@@ -140,11 +140,44 @@ powershell -ExecutionPolicy Bypass -File scripts/stop-servers.ps1
 
 ## 使用
 
+### 快速上手（root vs `1/`）
+
+本仓库有两套独立实现，都跑在同一组端口 `:9100–9103`，不要同时启动：
+
+**root —— `crossagent/`（推荐，已接入 Kilo）**
+
+```powershell
+uv sync
+powershell -ExecutionPolicy Bypass -File scripts/start-servers.ps1   # pool :9100 + writer/critic/lead :9101..9103
+powershell -ExecutionPolicy Bypass -File scripts/stop-servers.ps1    # 停止
+```
+
+服务器起来后，Kilo 的 `a2a-writer` / `a2a-critic` / `a2a-lead` MCP 工具即可用；各角色
+每轮契约见 `agents/<role>/CLAUDE.md`。
+
+**子目录 `1/` —— `agentpool`（早期实现，无 bearer 身份、无头编排器非一等公民）**
+
+```powershell
+cd 1
+uv sync
+uv run pytest                                        # pool / session / consensus 测试
+uv run python demo/run_session.py --num-agents 3     # 全自主闭环，无 LLM
+uv run python demo/real_review.py --payload demo/real_review_payload.json
+uv run python demo/compare_radiance.py               # 自动选端口，可与 root 并存
+uv run python -m pool.server                         # 单跑 pool（:9100）
+```
+
+两套实现的差异（工具名 / 认证 / 收敛契约 / 编排器）见下方「与子目录 `1/` 的关系」。
+
 ```bash
 make test        # 单元测试（协议 / 池 / orchestrator，使用假 agent）
 make smoke       # 拉起池 + 2 个 A2A 服务器；脚本化往返（无真实 Claude）
 make demo        # 完整无头 3-agent demo（writer / critic / lead）——需要 `claude`
 ```
+
+编排器支持 `schedule: "serial"`（默认）与 `"parallel"`：并行模式每轮让所有 agent 在
+同一 pre-round 快照上并发工作（bulk-synchronous），一轮计 `len(agents)` 次 run，与串行
+模式的轮次预算可比。在 `goal.json` 加 `"schedule": "parallel"` 即可切换。
 
 ### Demo 目标
 
@@ -180,6 +213,28 @@ uv run python demo/review_demo.py            # 完整自主 3-agent 评审——
 
 ```bash
 uv run python demo/compare_radiance.py          # 需已运行 scripts/start-servers.ps1
+uv run python demo/review_radiance.py           # 附着已运行栈评审；结束后导出完整活动/批判记录
+```
+
+### 单 agent vs 3-agent 效率 / 质量对照（payments ledger，盲评）
+
+同一个问题、同一模型、同一运行栈，`demo/compare_efficiency.py` 对照**单 agent 融合一轮**
+与 **3-agent 编排器**的效率比值；`demo/compare_quality.py` 再跑三种模式（single-monolithic /
+single-iterative(N) / 3-agent），并由**独立盲评**按 5 项标准打分（满分 25）：
+
+| 模式 | 轮次 | 墙钟 | 成本 | 盲评 /25 |
+|---|---|---|---|---|
+| single-monolithic | 1 | 38 s | $0.24 | 25 |
+| single-iterative(6) | 6 | 650 s | $2.01 | 25 |
+| 3-agent | 6 | 264 s | $2.13 | 10* |
+
+`*` 10/25 是度量产物：目标写了「不要写文件」，池的推理只留在活动日志里，盲评只看到
+lead 的状态行——池保存的是协调状态，不是工作产出。原始数字在
+`demo/output/{efficiency,quality}_comparison.json`。
+
+```bash
+uv run python demo/compare_efficiency.py        # 需已运行 scripts/start-servers.ps1
+uv run python demo/compare_quality.py           # 同上（含盲评）
 ```
 
 ### 与子目录 `1/` 的关系

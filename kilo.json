@@ -1,9 +1,10 @@
 {
+  "$schema": "https://app.kilo.ai/config.json",
   "mcp": {
     "a2a-writer": {
       "type": "local",
       "command": [
-        "uv", "run", "--directory", "C:/Git-repo-AI/CrossAgentMCP",
+        "uv", "run", "--directory", "D:/GitRepo-AI/CrossAgentMCP",
         "python", "-m", "crossagent.a2a_bridge",
         "writer", "writer",
         "http://127.0.0.1:9101",
@@ -15,7 +16,7 @@
     "a2a-critic": {
       "type": "local",
       "command": [
-        "uv", "run", "--directory", "C:/Git-repo-AI/CrossAgentMCP",
+        "uv", "run", "--directory", "D:/GitRepo-AI/CrossAgentMCP",
         "python", "-m", "crossagent.a2a_bridge",
         "critic", "critic",
         "http://127.0.0.1:9102",
@@ -27,7 +28,7 @@
     "a2a-lead": {
       "type": "local",
       "command": [
-        "uv", "run", "--directory", "C:/Git-repo-AI/CrossAgentMCP",
+        "uv", "run", "--directory", "D:/GitRepo-AI/CrossAgentMCP",
         "python", "-m", "crossagent.a2a_bridge",
         "lead", "lead",
         "http://127.0.0.1:9103",

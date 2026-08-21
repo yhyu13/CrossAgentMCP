@@ -1,0 +1,220 @@
+{
+  "question": "For a payments ledger, is strongly-consistent or eventually-consistent storage the right default?",
+  "model": "(inherit)",
+  "runs": [
+    {
+      "mode": "single-monolithic",
+      "converged": true,
+      "turns": [
+        {
+          "agent": "single",
+          "turn": 0,
+          "duration_s": 38.14263690006919,
+          "input_tokens": 41724,
+          "output_tokens": 1159,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.23759499999999997
+        }
+      ],
+      "totals": {
+        "wall_s": 38.14263690006919,
+        "input_tokens": 41724,
+        "output_tokens": 1159,
+        "cache_read_tokens": 0,
+        "cost_usd": 0.23759499999999997
+      },
+      "final_answer": "## 1. Steelman: Strong Consistency\n\nA payments ledger records *irreversible, financially-binding facts*. The canonical hazard is **double-spend / overdraw**: two concurrent \"debit $500\" requests reading a stale balance of $1,000 and both clearing. Eventually-consistent storage admits a window where two nodes each believe the balance is sufficient — the ledger can go negative or a user can spend money they don't have, and the \"eventual\" reconciliation happens *after* the money has left the system.\n\nStrong consistency makes the ledger's core invariant — *balance never negative; every debit backed by a prior credit* — a property the database guarantees *at write time*, not something the application patches up later. For payments, the cost of a single inconsistent read is not a slightly-stale profile picture; it's real, sometimes irreversible, monetary loss and regulatory exposure. Linearizable reads-after-write also mean a customer who just made a payment *always* sees it reflected, which eliminates an entire class of support tickets (\"I paid but it shows unpaid\") and makes audit/reporting deterministic — critical for SOX/PCI-style compliance where \"the ledger is the truth\" must be literally true.\n\nThe argument closes: *the invariant is too important and the violation too expensive to delegate to reconciliation logic.* You pay latency and availability, and you accept that writes coordinate across replicas — but correctness is non-negotiable.\n\n## 2. Steelman: Eventual Consistency\n\nThe ledger's *read* and *write* paths have very different availability needs. Strong consistency couples them: a partition or a slow replica can block *accepting a payment* (the write), even though a payment acceptance is exactly the operation a merchant cannot afford to refuse at checkout. In payments, **availability often outranks instantaneous read-freshness** — you'd rather *accept* a payment (durably, locally) and resolve the *view* of the balance a moment later than drop a transaction because the quorum couldn't form.\n\nEventual consistency also scales horizontally: writes don't need cross-region coordination, so throughput and tail latency improve, and the system stays up through network partitions. The trick is to push consistency to the *right layer* — not the generic key-value store, but the **application's transaction domain**. Payment systems already do this: idempotency keys, per-account serialization (a single writer per account), an append-only event log with versioned/compare-and-set semantics, and an outbox for side effects. You get *per-account linearizability* (the only scope that matters for a given user's balance) while the *global* view — totals, dashboards, cross-account transfers — is allowed to lag.\n\nThe argument closes: *\"eventual\" does not mean \"wrong.\"* With per-account ordering and conditional writes, you get the same safety guarantees for the invariant that actually matters, while keeping the availability and scale that strong consistency sacrifices.\n\n## 3. Ruling\n\n**Default to strong consistency for the authoritative balance/ledger store, but scope it to the account, and push the \"eventual\" parts to projections — don't choose one globally.**\n\nConcrete reasoning:\n\n- **The invariant is financial and the failure is irreversible.** Overdraw/double-spend cannot be \"eventually fixed\" — the money is gone. The ledger is precisely the component where the engineering answer should *not* gamble availability against correctness. Strong consistency is the correct default for the **source of truth** (the account balances and the debit/credit log).\n\n- **But scope the strong guarantee to the account, not the globe.** You almost never need linearizability across *unrelated* accounts. Per-account serialization (one writer per account, or a conditional/versioned write) delivers the safety that matters — \"this account can't overdraw\" — without paying cross-account coordination costs. This is the reconciliation that dissolves the false binary: the *invariant* is strongly enforced; the *scope* is narrowed.\n\n- **Let the weak-consistency layer carry everything that isn't the invariant.** Balances in aggregate, dashboards, statements, fraud/analytics views, search — these are **projections** and should be eventually consistent (CQRS: strong write model, eventually-consistent read model). The read model being stale by a few hundred milliseconds is fine; the write model being stale is not.\n\n**Key tradeoffs to state explicitly:**\n\n| Dimension | Strong (account-scoped) | Eventual (projections) |\n|---|---|---|\n| Overdraw/double-spend | Prevented at write time | Must be patched by reconciliation — risk window |\n| Availability under partition | Writes may be refused | Writes accepted, resolved later |\n| Tail latency | Higher (coordination) | Lower |\n| Horizontal scale | Bounded by coordination | Scales cleanly |\n| Compliance/audit determinism | Clean, linearizable | Needs care (event-time vs. read-time) |\n| Complexity | In the DB | In the application |\n\n**Final ruling:** Strong consistency is the right default for the payments ledger's **source of truth**, but enforce it *per account* (serialized/conditional writes) rather than globally, and serve all non-authoritative views from an eventually-consistent read model. The goal is never \"strong vs. eventual\" as a global flag — it's *strong where an invariant is at stake, eventual where only a projection is.*",
+      "judge": {
+        "criteria": {
+          "correctness": 5,
+          "completeness": 5,
+          "specificity": 5,
+          "consistency": 5,
+          "actionability": 5
+        },
+        "total": 25,
+        "notes": "A model answer: both positions steelmanned faithfully, then correctly dissolved the false binary into per-account strong consistency plus eventual projections, with a concrete tradeoff table and directly applicable guidance.",
+        "_judge_cost_usd": 0.221885,
+        "_judge_input_tokens": 42932,
+        "_judge_output_tokens": 289
+      }
+    },
+    {
+      "mode": "single-iterative(6)",
+      "converged": true,
+      "turns": [
+        {
+          "agent": "single",
+          "turn": 0,
+          "duration_s": 44.43148020002991,
+          "input_tokens": 41727,
+          "output_tokens": 1290,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.24088500000000002
+        },
+        {
+          "agent": "single",
+          "turn": 1,
+          "duration_s": 90.5857143998146,
+          "input_tokens": 42917,
+          "output_tokens": 3832,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.31038499999999997
+        },
+        {
+          "agent": "single",
+          "turn": 2,
+          "duration_s": 127.71848329994828,
+          "input_tokens": 43369,
+          "output_tokens": 6143,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.37041999999999997
+        },
+        {
+          "agent": "single",
+          "turn": 3,
+          "duration_s": 110.53290580003522,
+          "input_tokens": 44018,
+          "output_tokens": 4973,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.344415
+        },
+        {
+          "agent": "single",
+          "turn": 4,
+          "duration_s": 129.66746730008163,
+          "input_tokens": 44176,
+          "output_tokens": 5551,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.359655
+        },
+        {
+          "agent": "single",
+          "turn": 5,
+          "duration_s": 147.50659110001288,
+          "input_tokens": 44172,
+          "output_tokens": 6696,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.38826
+        }
+      ],
+      "totals": {
+        "wall_s": 650.4426420999225,
+        "input_tokens": 260379,
+        "output_tokens": 28485,
+        "cache_read_tokens": 0,
+        "cost_usd": 2.01402
+      },
+      "final_answer": "## Critique\n\nYour self-critique is right about *where* the weakness is — the transfer — but wrong about *what* the weakness is. You concluded the transfer is a hard two-key atomicity problem that needs a special \"coordination primitive.\" The deeper error is that the problem is largely a modeling artifact: **double-entry accounting already models a transfer as one journal entry with two lines, not two account mutations.** You spent a thousand words building a bridge (saga/compensation as a \"third way\") across a gap that mostly isn't there.\n\nFive defects, one spine.\n\n**1. The \"two-key transfer\" is a problem you invented by modeling the ledger as mutable balances.** \"Debit A, credit B\" is not two writes to two keys; it is *one journal entry* with a debit line and a credit line. In an append-only ledger, one entry is one atomic append — the transfer is atomic for free, because it is a single event, not two. Your entire Tier 2 (and the \"empty cell\" in critique #2) dissolves: intra-authority transfer has no cross-key atomicity problem. The only thing left that is genuinely cross-account is *which sequencer validates the debit*, and that has a crisp answer (below). You treated the naive mutable-balance model as the only model and then heroically worked around its defect.\n\n**2. Because of (1), your resolution is the eventual answer wearing a \"third way\" costume.** Your critique #5 correctly scolds the original draft for a false dilemma — then your own ruling's Tier 2 does the same thing in mirror: \"reservation/saga … atomic in effect, eventual in settlement.\" A saga is *not* atomic. In an append-only log you cannot un-append; a compensating action is a new event, and the reservation window (available balance ≠ ledger balance) is observable. \"Atomic in effect\" is either (a) false, or (b) true only if you hide the intermediate state from observers — a visibility/API choice, not a consistency property. Your steelman of eventual says the eventual camp \"loses\" on transfer atomicity; your ruling then answers the transfer with the eventual camp's exact mechanism. The third option you accused the draft of omitting is, on inspection, just sagas.\n\n**3. You conflate the transfer's *atomicity* with its *conditionality*, and that conflation is what makes the transfer look hard.** Atomicity is about the entry (debit line and credit line land together — one append). Conditionality is about the *predicate* (is the source balance sufficient?) — and only the debit leg has one. A credit is unconditional: you can always credit an account. So the \"two-key\" transfer reduces to **one conditional check on the source account, bundled with one unconditional credit into a single atomic entry.** That is not a two-key coordination problem; it is one per-account conditional write (your Tier 1) plus one free append. The draft's error is treating the debit and credit legs as symmetric; they are not.\n\n**4. Your read criterion is wrong.** You say linearizable reads are needed \"where cross-session ordering is externally visible.\" That is the reporting concern. The safety read is the *gating* read — the read whose result feeds a conditional-write predicate (the overdraft/fraud check *before* a debit lands). That read must be linearizable on the source account, and it is a read on the live path, not a \"projection.\" Your Tier-3-ish claim that \"reads are projections\" (steelman of eventual) is true for statements and analytics but false for the gating read, and your ruling never cleanly separates the two. The correct cut is \"does this read feed a safety predicate,\" not \"is it externally visible.\"\n\n**5. Idempotency is not a consistency axis, and you keep folding it in.** Exactly-once dedup (idempotency key = unique constraint) is a *delivery* concern — a property of the message/retry layer, orthogonal to whether the store is linearizable. Your critique #6 correctly flags that idempotent-append and conditional-append are different primitives; the ruling then re-lumps them in Tier 1 as if they belonged to the same tier for the same reason. They don't. Keep dedup out of the consistency ruling; it is a separate axis.\n\nThe spine of all five: **the object of record should be the journal, not the balance.** Once you model the ledger as an append-only journal, the transfer is one atomic entry, the only conditional primitive is the source-account debit predicate, and the entire \"strong vs. eventual\" question collapses to two concrete decisions — (a) how appends are ordered per account to validate the debit predicate, and (b) how fresh materialized balances are for the two kinds of reads. Your answer gestures at this (critique #6 names \"the log entry\") but never lets the insight dissolve the transfer, so it builds elaborate scaffolding over a solved problem.\n\n---\n\n## Revised answer\n\n### 1. Steelman: Strong consistency\n\nThree claims, stated at full strength — the third corrected.\n\n- **Safety is not retrofittable; liveness is.** A committed wrong debit cannot be un-committed: money has moved, trust has broken, and in an append-only journal you cannot erase the entry — only append a reversal, which is itself a new fact that must be reconciled. Latency, unavailability, and spend are recoverable — you queue, retry, buffer. Strong consistency does not *eliminate* reconciliation; it **confines** it to failure windows and the authority boundary instead of making it the normal path for every read. This asymmetry carries the whole argument.\n\n- **One truth within an authority.** Auditors and regulators require a single serialized history, not \"it will converge.\" Correct — and its correct scope is exactly the domain one authority owns; the guarantee ends at that boundary.\n\n- **The cost of strong consistency collapses when the conflict domain is one key — and the key is the account, but the operation is the journal entry.** Two debits to the same account conflict; mutations to different accounts do not. A single-account mutation is linearizable on one key, and one-key linearizability is a single-leader problem, not a consensus problem. The draft's real and valuable insight. Its error is treating the transfer as *two* such mutations. It is not: it is **one journal entry with two lines**, and the entry is the atomic unit. The expensive tier covers *movement between authorities*, not movement between accounts.\n\n### 2. Steelman: Eventual consistency\n\n- **\"Payments\" is mostly reads.** Statements, fraud *models*, analytics, notifications are projections of history; forcing them through a strong store taxes paths that never needed it. Correct — and an argument about the *derived* path, not the source of truth.\n\n- **Order and auditability are properties of the log, not of reads.** An append-only journal gives total order, tamper-evidence, and replayability — none of which require linearizable reads, only ordered appends.\n\n- **The safety primitive is the conditional write, not the strong read.** Read-then-write is a TOCTOU bug at any level. The right primitive is \"append this debit only if the source's committed sum suffices.\" A conditional append *is* a linearizable write at the source account. The eventual camp's strongest point is the most radical available to either side: **the store label is irrelevant; what matters is whether you have linearizable conditional writes where a predicate is decided.** Everything else is where you deploy which primitive.\n\n- **The transfer must still be atomic — and here the eventual camp makes a category error.** Their usual answer, \"one conditional write per leg,\" treats the transfer as two mutations. It is one entry. The debit leg is conditional; the credit leg is unconditional. There is no \"two conditional writes\" problem, because there is only one predicate. The eventual camp loses not because atomicity is hard but because they model the transfer the same wrong way the strong camp does.\n\n### 3. Ruling\n\nThe binary is ill-posed twice over: it conflates a store label with a set of primitives, and it hides that **the account is the conflict domain while the journal entry is the operation.** The correct answer is a concrete architecture, not a taxonomy:\n\n**Model the ledger as the append-only journal.** Every mutation is an append to the authoritative log. A transfer is **one journal entry** — a debit line and a credit line in a single atomic event. Because one append is atomic, intra-authority transfer atomicity is *free*; it needs no coordinator, no saga, no two-phase commit.\n\n**Separate atomicity from conditionality.** The entry is atomic; only the debit leg carries a predicate (\"source balance ≥ amount\"). The credit leg is unconditional — you can always credit an account. So the one place a conditional primitive is mandatory is the **source account's balance**, checked against the journal when the entry is accepted.\n\n**Three tiers, keyed to three operations, each with a named primitive:**\n\n- **Tier 1 — the debit predicate (one key): per-account linearizable conditional append.** Order appends per account with a single-leader sequencer; accept a debit entry only if the folded balance of the source account suffices. This is one-key linearizability — a single-leader problem, cheap, no global serialization. This is the draft's insight, kept in full, and now correctly the *only* conditional tier.\n\n- **Tier 2 — the transfer (one entry, two lines): atomic by construction, conditional on one key.** The entry is one append, so it is atomic. Its only predicate is the source-balance check, which is Tier 1 on the source account. The credit leg is a free append. There is no \"two-key atomicity primitive\" to design — the atomic unit is the entry, and the condition lives on one account. (What *does* remain is a *sequencing* question when both legs touch accounts in the same authority: pick the source account's sequencer as the validator, or a single transaction authority. This is a routing decision, not a consistency model.)\n\n- **Tier 3 — cross-authority (no shared journal): async settlement, reconciled.** No authority owns both sides, so no single entry can span them; each institution writes its own journal entry and gates its own leg with its own Tier-1 predicate. Settlement is asynchronous and reconciled; the double-spend is bounded because each leg is individually gated. This is an integration problem, not a consistency problem.\n\n**Reads split by function, not by visibility:**\n\n- **Gating reads** — the read whose result feeds a debit predicate (the overdraft/fraud check *before* the append). These must be linearizable on the source account. This is the safety read on the live path, and it is not a projection.\n- **Read-your-writes** — the balance a user sees immediately after transacting. Per-account read-your-writes is cheap; pay it on the authoritative path.\n- **Reporting reads** — statements, analytics, fraud-model *training*, history. Eventual projections of the journal. As cheap and stale as the business allows.\n\n**Idempotency is a separate axis.** Exactly-once dedup (idempotency key as a unique constraint) is a *delivery* property of the message/retry layer, orthogonal to store consistency. Keep it out of the tiering; it does not argue for or against strong or eventual.\n\n**Final ruling.** For a payments ledger, the default is **an append-only journal, with per-account linearizable conditional appends where a predicate is decided, and nothing more expensive than any operation requires.** Concretely: (1) name the authority that owns each account, and make its journal the single serialized truth within that boundary; (2) model every mutation as a journal entry, so that a transfer is one atomic event — debit line conditional on the source balance, credit line unconditional; (3) order appends per account with a single-leader sequencer, and enforce the debit predicate at accept time — one-key linearizability, cheap, not a consensus problem; (4) split reads by function: gating reads linearizable, read-your-writes per-account, everything else an eventual projection of the journal; (5) treat anything crossing an authority boundary as two journal entries with async settlement and reconciliation; (6) handle exactly-once as a delivery concern, not a consistency one. The justification is the retrofittability asymmetry — **safety violations cannot be un-committed, liveness violations can be recovered from** — so the source of truth defaults to the primitive that prevents the former, and liveness is layered back, confined to failure windows and the authority boundary. The load-bearing fact that makes this affordable is that **the conflict domain is the account, and single-account strong consistency costs one leader**; the correction that makes it *correct* is that **money moves not between two keys but within one journal entry, and the only predicate in that entry lives on one account.** Anyone proposing a pure eventual-consistency ledger must show not that they \"rebuilt a strong ledger\" but that they validated the debit predicate against the folded journal — and the moment they do that, they have built a per-account linearizable conditional append, which is the strong write path under a different label. The only live question left is which reads must be linearizable, and the answer is a bounded set: the gating read and the read-your-writes surface — both per-account, both cheap.",
+      "judge": {
+        "criteria": {
+          "correctness": 5,
+          "completeness": 5,
+          "specificity": 5,
+          "consistency": 5,
+          "actionability": 5
+        },
+        "total": 25,
+        "notes": "Technically sound and domain-aligned (double-entry journal, per-account linearizable conditional append as a single-leader problem), both sides steelmanned at full strength, highly concrete with named primitives and a six-step actionable ruling, and internally consistent.",
+        "_judge_cost_usd": 0.24321,
+        "_judge_input_tokens": 44677,
+        "_judge_output_tokens": 793
+      }
+    },
+    {
+      "mode": "3-agent",
+      "converged": true,
+      "turns": [
+        {
+          "agent": "writer",
+          "turn": 0,
+          "duration_s": 33.1490829999093,
+          "input_tokens": 45833,
+          "output_tokens": 874,
+          "cache_read_tokens": 90112,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.29607100000000003
+        },
+        {
+          "agent": "critic",
+          "turn": 1,
+          "duration_s": 65.70948900002986,
+          "input_tokens": 48797,
+          "output_tokens": 2782,
+          "cache_read_tokens": 142080,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.38457500000000006
+        },
+        {
+          "agent": "lead",
+          "turn": 2,
+          "duration_s": 66.33821259997785,
+          "input_tokens": 51992,
+          "output_tokens": 2628,
+          "cache_read_tokens": 145664,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.398492
+        },
+        {
+          "agent": "writer",
+          "turn": 3,
+          "duration_s": 32.44848720007576,
+          "input_tokens": 52367,
+          "output_tokens": 972,
+          "cache_read_tokens": 142720,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.35749500000000006
+        },
+        {
+          "agent": "critic",
+          "turn": 4,
+          "duration_s": 36.97587989992462,
+          "input_tokens": 53548,
+          "output_tokens": 830,
+          "cache_read_tokens": 141312,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.35914599999999997
+        },
+        {
+          "agent": "lead",
+          "turn": 5,
+          "duration_s": 29.834692999953404,
+          "input_tokens": 53237,
+          "output_tokens": 932,
+          "cache_read_tokens": 93056,
+          "cache_creation_tokens": 0,
+          "cost_usd": 0.336013
+        }
+      ],
+      "totals": {
+        "wall_s": 264.4558446998708,
+        "input_tokens": 305774,
+        "output_tokens": 9018,
+        "cache_read_tokens": 754944,
+        "cost_usd": 2.1317920000000004
+      },
+      "final_answer": "Session converged: `state: \"satisfied\"`, all three agents `true`, open critiques cleared.\n\nConsensus reached — genuine, not coerced. The critic (original dissenter) forced the writer to narrow its claim from \"strong consistency required, full stop\" to the actual invariant (atomicity + per-account total order + idempotency), with strong consistency as the *default* not a *necessity*. Writer accepted; critic confirmed; I ruled the tie broken. Done.",
+      "judge": {
+        "criteria": {
+          "correctness": 3,
+          "completeness": 1,
+          "specificity": 2,
+          "consistency": 3,
+          "actionability": 1
+        },
+        "total": 10,
+        "notes": "This is a process summary of a session, not an answer—it gestures at the right invariants (atomicity, per-account total order, idempotency, strong-as-default) but never actually explains the tradeoff or steels either side, so a reader learns nothing actionable.",
+        "_judge_cost_usd": 0.21847,
+        "_judge_input_tokens": 41904,
+        "_judge_output_tokens": 358
+      }
+    }
+  ]
+}
