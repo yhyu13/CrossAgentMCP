@@ -300,6 +300,101 @@ entry; 26 tests pass.
 
 ---
 
+## 2026-08-22 — The scaling law, measured with stubs (and a bug found)
+
+Asked "how does this cost scale as N grows, serial vs parallel?", and answered it
+with a zero-LLM sweep instead of vibes: `demo/scale_n.py` runs N ∈ {1, 3, 8, 15, 30}
+stub agents (50 ms fake work + 2 KB artifact, no model) under
+`schedule: serial | parallel | parallel-2r` and records every turn's prompt bytes.
+`parallel-2r` is the coordination round the 1-round parallel never pays: round 1
+drafts without satisfying, round 2 reviews + satisfies.
+
+| schedule | wall | prompt-sum | meaning |
+|---|---|---|---|
+| serial | ~N (α 0.92) | **~N²** (rolling α 2.08 → 2.02, R²≈1) | every agent re-reads the growing log, ~2.8 KB per finished peer |
+| parallel (1 round) | ~constant | `N·p0`, `p0 ≈ 941 + 27.6(N−1)` | round-1 snapshot is empty; the roster itself is O(N) × N agents, so it drifts toward N² (rolling α 1.12 → 1.40) |
+| parallel (2 rounds) | ~2× 1-round | **0.18× serial** at N=30 | the review round is a triangle of tiny `finished` lines — **because the artifacts are dropped** |
+
+- **Wall**: N=30 serial 1.87 s vs parallel 0.17 s vs 2-round 0.33 s; `max_conc=30`
+  confirmed. Parallel wall ≈ slowest turn + overhead, not Σ. Time is not ×N.
+- **Serial cost is quadratic**: the last agent sees ~N finished events, so the whole
+  session re-bills ~N²/2 event-bytes. Measured, not extrapolated.
+- **Parallel round-1 cost is `N × p0` exactly** — but p0 is not a constant. It carries
+  the full roster (~27 B/agent), so `pΣ_r1 ≈ 941N + 27.6·N(N−1)`. "Cost ~ N per round"
+  is wrong; it is N × an O(N) roster, already visibly superlinear.
+
+**The bug the 2-round run exposed** (this is the headline, not the cost table):
+`_finish()` sets `last_seen[agent]` to the seq of the agent's own `finished` event
+(`crossagent/orchestrator.py:_finish`). But in a parallel round the `artifact`s are posted
+*inside* `gather` while the `finished` events are posted *after* `gather`, so every
+artifact's seq is below every `last_seen`. Round 2's `activity_since(last_seen)`
+therefore returns only later agents' tiny `"a{i} ok"` lines — a ~288 B/event
+triangle — and **never the 2 KB artifacts**. At N=30 the first agent sees 29 tiny
+lines (10,099 B), the last agent sees 0 (1,746 ≈ p0).
+
+So "2-round parallel is 0.18× serial" is *not* a cost victory — it is a **vacuous
+review**: agents never see each other's actual work in the coordination round.
+
+**Closed the loop.** `Orchestrator(parallelCursor="round")` restores `last_seen` to
+the pre-gather cursor after a parallel round (default `"finish"` keeps the old
+behavior), so the next round's `activity_since` re-injects sibling artifacts.
+Measured N=30: r2 turns from a **triangle** (`r2_pN ≈ p0`, a29 saw 0) into a
+**rectangle** (`r2_p0 = 78,256 ≈ r2_pN = 78,257`, 60 events each — 30 artifacts +
+30 finished), and `(r1+r2)/serial = 2.53 → 2.06 → 1.94 → 1.88` (rolling α(r2Σ)
+1.93 → 1.97 → 1.98, → 2). Correct-semantics 2-round parallel lands at **1.88×
+serial tokens**, matching the ~2× prediction. Wall stays flat: 0.35 s vs serial
+1.85 s. Covered by `test_parallel_round_cursor_next_round_sees_sibling_artifacts`
+(29 tests pass).
+
+**Dollars** (relative, cost ∝ prompt-sum, anchored to live N=3 serial $4.56 — not a
+per-turn rate): serial N=30 ≈ $509 (×112), parallel 1r ≈ $21, parallel 2r (buggy)
+≈ $92, parallel 2r (fixed) ≈ **$957** (1.88×). The buggy $92 was a no-op review.
+
+**Nits**: the fix restores to `pre_seen`, so each agent also re-reads its own
+artifact/finished (60 events, not 58) — harmless redundancy. The `parallelCursor`
+docstring now matches that restore (was briefly written as "set every agent to the
+max seq").
+
+### `1/` critique cap: a cliff, not a curve
+
+`1/demo/run_session.py` gained `--max-iterations`/`--quiet`; swept N = {8, 15, 30}.
+The `1/` session increments `iteration` **only on `critique_send`**
+(`1/pool/store.py:204`) and fails at `iteration >= maxIterations` (`:308`).
+All-flawed × all-to-all stubs send exactly `N(N−1)` critiques, so it fails **iff
+`N(N−1) > cap`**:
+
+| N | N(N−1) | cap | iter | result |
+|---|---|---|---|---|
+| 8 | 56 | 200 | 56 | PASS |
+| 15 | 210 | 200 | 200 | FAIL (~23% into the mesh) |
+| 30 | 870 | 200 | 200 | FAIL |
+| 15 | 210 | 400 | 210 | PASS |
+
+Threshold N≥15 at the default 200. Live agents that skip already-good peers would
+send ≪ N(N−1), so this is a stub-adversary × hard-cap interaction, not "N=30 is the
+killer." The real lever is per-agent critique capping/sharding, not a bigger cap.
+
+**Durable**: parallel buys wall-clock, not tokens. Correct 2-round parallel ≈ 2×
+serial tokens (measured 1.88×) — the coordination round genuinely re-bills every
+agent for every sibling's artifact. The two real quadratic costs are log re-reads
+(serial) and all-to-all critique; the artifact-drop is fixed behind
+`parallelCursor="round"`.
+
+### Decisions this measurement forced
+
+- **`1/` is frozen.** The `1/` pool (slash methods, no bearer identity, one-way
+  `satisfy()`, agents self-advance) is the weaker architecture. Its one unique
+  finding — the `N(N−1)` all-to-all critique cliff — is now captured as a root
+  guard. `1/` stays only as a multi-process test fixture.
+- **Root gained a critique cap** (`maxCritiques`, default 200). `Session.iteration`
+  was a dead field; it now counts `critique()` calls, and the pool marks the
+  session `failed` when the cap is crossed (mirrors `1/`'s `maxIterations`). The
+  orchestrator also now returns on pool-initiated `failed` instead of burning the
+  turn budget. Tests: `test_max_critiques_cap_fails_session`,
+  `test_max_critiques_pool_failure_stops_orchestrator`.
+
+---
+
 ## Where it stands
 
 - [x] A2A pool control plane (registry / sessions / activity / critique / goal)
@@ -315,6 +410,9 @@ entry; 26 tests pass.
 - [x] Mono vs 3-agent measured on that tree (root: cost ×2.00, wall ×1.54, converged)
 - [x] First live `claude -p` loop through the `1/` pool (9 turns, lead never satisfied)
 - [x] Payments-ledger single-vs-3-agent efficiency + quality comparison (blind judge)
+- [x] Scaling-law sweep (N=1..30 stubs, serial/parallel/parallel-2r) + `1/` critique-cap threshold
+- [x] Fix parallel `last_seen` artifact-drop (`parallelCursor="round"`; round-2 sees sibling artifacts, measured 1.88× serial)
+- [x] Root critique cap (`maxCritiques`, default 200) + orchestrator stops on pool-initiated `failed`
 - [ ] Long-term state persistence (pool is in-memory, resets on restart)
 - [ ] A run where the writer actually *resolves* the 8 open M4_kimi critique threads
-- [ ] `1/` live loop with a mandatory per-turn satisfaction contract (to match root)
+- [x] Freeze `1/` — critique-cap lesson folded into root `maxCritiques`

@@ -45,9 +45,11 @@ class PoolClient:
 
     # -- sessions --
     async def session_create(self, goal: str, members: list[str] | None = None,
-                             session_id: str | None = None) -> dict[str, Any]:
+                             session_id: str | None = None,
+                             max_critiques: int = 200) -> dict[str, Any]:
         return await self._rpc("SessionCreate",
-                               {"goal": goal, "members": members, "sessionId": session_id})
+                               {"goal": goal, "members": members,
+                                "sessionId": session_id, "maxCritiques": max_critiques})
 
     async def session_join(self, session_id: str, agent_id: str) -> dict[str, Any]:
         return await self._rpc("SessionJoin", {"sessionId": session_id, "agentId": agent_id})

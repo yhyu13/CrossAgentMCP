@@ -56,7 +56,7 @@ A2A（Google 的 Agent2Agent 协议）只定义了「两个 agent 之间如何�
 | 没有共享记忆：每个 agent 只看到自己的记录 | 只追加式会话 `activityLog` + `activity_since(seq)` 增量 |
 | 没有异议通道：一个 agent 无法拦下另一个的劣质产出 | `critique_post` 打开一个线程，**撤销**目标 agent 的满意度 |
 | 没有收敛定义：什么才算「完成」 | `declare_satisfaction` + 状态机（`forming→working→revising→satisfied`） |
-| 没有终止机制：循环可能无限闲聊、烧 token | 两道护栏：轮次上限 + 无进展检测 → `failed` |
+| 没有终止机制：循环可能无限闲聊、烧 token | 三道护栏：轮次上限 + 无进展检测 + 批判上限（`maxCritiques`）→ `failed` |
 | 没有身份：任何进程都能冒充另一个 agent | 每个 agent 独立 bearer token；伪造动作被 403 拒绝 |
 | 不可测试：证明循环有效要烧真金白银的 LLM token | 可注入的 agent runner + 确定性 stub → `pytest` 零成本 |
 
@@ -86,9 +86,9 @@ A2A（Google 的 Agent2Agent 协议）只定义了「两个 agent 之间如何�
    枚举、规范错误码（`-32001..-32004`）、终态任务状态。没有幻觉出的 API，线格式可对照
    规范逐条核验。
 2. **歧义下的架构判断。** 计划中明确选择了*集中控制面 + P2P 数据面*、为可测试性而设的
-   *可注入 agent runner*，以及在砍掉一个误触发的无进展检测器后保留*恰好两道*终止护栏——
+   *可注入 agent runner*，以及在砍掉一个误触发的无进展检测器后保留*三道*终止护栏（轮次上限 + 无进展检测 + 批判上限）——
    推理过程记录在 `1/plan.md` 与 `1/REVIEW.md`。
-3. **零 LLM 成本的测试先行验证。** 4 个文件 24 个测试覆盖协议、池、桥与 orchestrator；
+3. **零 LLM 成本的测试先行验证。** 4 个文件 29 个测试覆盖协议、池、桥与 orchestrator；
    `demo/review_demo_scripted.py` 用确定性 stub 回放完整生命周期；`benchmark.py` 记录每轮/
    每会话的墙钟时间、token（含缓存命中）与美元成本（`benchmark-results.json` 显示一场
    3-agent 共识对话：6 轮、$3.03）。
@@ -142,7 +142,7 @@ powershell -ExecutionPolicy Bypass -File scripts/stop-servers.ps1
 
 ### 快速上手（root vs `1/`）
 
-本仓库有两套独立实现，都跑在同一组端口 `:9100–9103`，不要同时启动：
+本仓库有两套独立实现，都跑在同一组端口 `:9100–9103`，不要同时启动。`1/` 已冻结，日常用 root。
 
 **root —— `crossagent/`（推荐，已接入 Kilo）**
 
@@ -155,7 +155,7 @@ powershell -ExecutionPolicy Bypass -File scripts/stop-servers.ps1    # 停止
 服务器起来后，Kilo 的 `a2a-writer` / `a2a-critic` / `a2a-lead` MCP 工具即可用；各角色
 每轮契约见 `agents/<role>/CLAUDE.md`。
 
-**子目录 `1/` —— `agentpool`（早期实现，无 bearer 身份、无头编排器非一等公民）**
+**子目录 `1/` —— `agentpool`（早期实现，无 bearer 身份、无头编排器非一等公民；已冻结）**
 
 ```powershell
 cd 1
@@ -177,7 +177,9 @@ make demo        # 完整无头 3-agent demo（writer / critic / lead）——�
 
 编排器支持 `schedule: "serial"`（默认）与 `"parallel"`：并行模式每轮让所有 agent 在
 同一 pre-round 快照上并发工作（bulk-synchronous），一轮计 `len(agents)` 次 run，与串行
-模式的轮次预算可比。在 `goal.json` 加 `"schedule": "parallel"` 即可切换。
+模式的轮次预算可比。在 `goal.json` 加 `"schedule": "parallel"` 即可切换。并行模式下
+可用 `"parallelCursor": "round"` 让下一轮看到同伴的产出（默认 `"finish"`，不重喂）；
+`"maxCritiques"`（默认 200）限制批判总数，超限判 `failed`。
 
 ### Demo 目标
 
@@ -235,6 +237,7 @@ lead 的状态行——池保存的是协调状态，不是工作产出。原始
 ```bash
 uv run python demo/compare_efficiency.py        # 需已运行 scripts/start-servers.ps1
 uv run python demo/compare_quality.py           # 同上（含盲评）
+uv run python demo/scale_n.py                   # 零 LLM：N=1..30 stub 缩放（串行/并行/两轮）
 ```
 
 ### 与子目录 `1/` 的关系
@@ -246,6 +249,10 @@ bearer 身份、无头编排器不是一等公民）。同一棵 radiance 树的
 强制 `declare_satisfaction`，`1/` 的 `satisfy()` 只能单向 `True`——不是评审质量
 更差（`A2A_REVIEW_1.md` 同样有 `file:line` 的 Critical 发现）。详见
 [JOURNEY.md](JOURNEY.md) 2026-08-21 节与 [1/README.md](1/README.md)。
+
+> **`1/` 已冻结（2026-08-22）**：不再作为竞争架构演进，仅保留作多进程测试夹具。
+> 它唯一不可替代的发现——all-to-all 批判的 `N(N−1)` 组合爆炸——已固化为 root 的
+> `maxCritiques` 护栏（默认 200）。
 
 ## 注意事项
 

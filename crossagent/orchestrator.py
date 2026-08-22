@@ -111,6 +111,20 @@ class Orchestrator:
         self.runner = agent_runner or _claude_runner
         self.session_id: str | None = None
         self.last_seen: dict[str, int] = {a["id"]: 0 for a in self.agents}
+        # parallelCursor:
+        #   "finish" (default) — last_seen jumps to this agent's own finished seq
+        #                        after the round. Sibling artifacts posted during
+        #                        gather sit at lower seq and are skipped next round.
+        #   "round"            — snapshot last_seen before gather; after the round
+        #                        restore every agent to that pre-round cursor so the
+        #                        next round sees all sibling artifacts + finished
+        #                        events.
+        self.parallel_cursor: str = config.get("parallelCursor", "finish")
+        if self.parallel_cursor not in ("finish", "round"):
+            raise ValueError(
+                f"unknown parallelCursor {self.parallel_cursor!r} "
+                "(expected 'finish' or 'round')")
+        self.max_critiques: int = config.get("maxCritiques", 200)
 
     # -- lifecycle --
     async def register_all(self) -> None:
@@ -119,7 +133,8 @@ class Orchestrator:
 
     async def create_session(self) -> str:
         members = [a["id"] for a in self.agents]
-        s = await self.pool.session_create(self.goal, members=members)
+        s = await self.pool.session_create(self.goal, members=members,
+                                           max_critiques=self.max_critiques)
         self.session_id = s["id"]
         return self.session_id
 
@@ -172,13 +187,18 @@ class Orchestrator:
                 print(f"[orchestrator] converged after {turns} turns: "
                       f"{json.dumps(status['satisfaction'])}")
                 return status
+            if status["state"] == "failed":
+                print(f"[orchestrator] session failed after {turns} turns "
+                      "(pool guard)")
+                return status
 
             runs = 0
             if schedule == "parallel":
                 # Bulk-synchronous round: every agent works on the same pre-round
                 # snapshot, then their ``finished`` events are posted together.
+                pre_seen = {a["id"]: self.last_seen[a["id"]] for a in self.agents}
                 items = [(a, await self.pool.activity_since(
-                              self.session_id, self.last_seen[a["id"]]))
+                              self.session_id, pre_seen[a["id"]]))
                          for a in self.agents]
                 results = await asyncio.gather(
                     *[self.runner(a, self._prompt(a, status, d)) for a, d in items],
@@ -198,6 +218,13 @@ class Orchestrator:
                     print(f"[orchestrator] turn {turns}: {agent['id']} "
                           f"(+{len(delta)} new events)")
                     turns += 1
+                if self.parallel_cursor == "round":
+                    # _finish advanced last_seen to each agent's own finished
+                    # seq, which sits *above* sibling artifacts posted during
+                    # gather. Restore the pre-round cursor so the next round's
+                    # activity_since includes those artifacts.
+                    for a in self.agents:
+                        self.last_seen[a["id"]] = pre_seen[a["id"]]
                 runs = len(items)
                 if error is not None:
                     await self.pool.mark_failed(

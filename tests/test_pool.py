@@ -77,6 +77,19 @@ def test_mark_failed_is_terminal():
     assert s.session_status("s1")["allSatisfied"] is False
 
 
+def test_max_critiques_cap_fails_session():
+    s = PoolStore()
+    s.create_session("goal", members=["a", "b"], session_id="s1", max_critiques=2)
+    assert s.critique("s1", "a", "b", "c1") is not None
+    assert s.get_session("s1").state != "failed"
+    assert s.critique("s1", "b", "a", "c2") is not None
+    # the 2nd critique crosses the cap -> failed, terminal
+    assert s.get_session("s1").state == "failed"
+    assert s.session_status("s1")["iteration"] == 2
+    # a failed session rejects further critiques
+    assert s.critique("s1", "a", "b", "c3") is None
+
+
 def _http_client(agents=None, orchestrator_token=None):
     return TestClient(make_pool_app(PoolStore(), agents=agents,
                                     orchestrator_token=orchestrator_token))

@@ -123,3 +123,50 @@ async def test_parallel_schedule_persists_successes_when_an_agent_fails(pool):
     assert orch.last_seen["c"] > 0
     assert orch.last_seen["b"] == 0
     assert (await pool.session_status(state["sid"]))["state"] == "failed"
+
+
+async def test_parallel_round_cursor_next_round_sees_sibling_artifacts(pool):
+    # Default last_seen=finished-seq skips sibling artifacts posted during
+    # gather. parallelCursor="round" restores the pre-round cursor so the
+    # next round's prompt contains those artifacts.
+    state = {"sid": None, "calls": {}}
+    marker = "SIBLING_ARTIFACT_MARKER"
+
+    async def runner(agent, prompt):
+        k = state["calls"][agent["id"]] = state["calls"].get(agent["id"], 0) + 1
+        if k >= 2:
+            assert marker in prompt, f"{agent['id']} round-2 prompt missed sibling artifacts"
+            await pool.declare_satisfaction(state["sid"], agent["id"], True, "ok")
+        else:
+            await pool.post_activity(state["sid"], agent["id"], "artifact",
+                                     {"note": marker})
+        return f"{agent['id']} r{k}"
+
+    config = _config([{"id": "a"}, {"id": "b"}, {"id": "c"}], max_turns=9)
+    config["schedule"] = "parallel"
+    config["parallelCursor"] = "round"
+    orch = Orchestrator(config, pool, agent_runner=runner)
+    state["sid"] = await orch.create_session()
+    status = await orch.run()
+    assert status["allSatisfied"] is True
+    assert all(state["calls"][i] >= 2 for i in ("a", "b", "c"))
+
+
+async def test_max_critiques_pool_failure_stops_orchestrator(pool):
+    # A critique storm trips the pool's maxCritiques cap; the orchestrator must
+    # detect the pool-initiated ``failed`` state and return instead of burning the
+    # whole turn budget.
+    state = {"sid": None, "turns": 0}
+
+    async def runner(agent, prompt):
+        state["turns"] += 1
+        await pool.critique(state["sid"], "a", "b", f"defect {state['turns']}")
+        return f"{agent['id']} critiqued"
+
+    config = _config([{"id": "a"}, {"id": "b"}], max_turns=50)
+    config["maxCritiques"] = 3
+    orch = Orchestrator(config, pool, agent_runner=runner)
+    state["sid"] = await orch.create_session()
+    status = await orch.run()
+    assert status["state"] == "failed"
+    assert state["turns"] < 50  # stopped by the cap, not the turn budget

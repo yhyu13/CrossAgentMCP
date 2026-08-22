@@ -1,5 +1,11 @@
 # agentpool — multi-agent A2A pool with critique-and-converge sessions
 
+> **Frozen (2026-08-22)**: this directory is the early prototype, superseded by the
+> root `crossagent/` implementation (faithful A2A v1.0 + bearer identity + headless
+> orchestrator). Kept only as a multi-process test fixture; no longer evolved. Its
+> one durable lesson — the `N(N−1)` all-to-all critique blow-up — is now a root
+> guard (`maxCritiques`, default 200).
+
 Extends the `claude-a2a` P2P pattern into a multi-agent pool:
 
 1. **Any agent can register** to the pool coordinator (exposed to each agent as MCP tools).
@@ -56,6 +62,7 @@ tests/                   pool / session / consensus tests
 uv sync
 uv run pytest                                   # unit tests
 uv run python demo/run_session.py --num-agents 3   # full autonomous loop, no LLM
+uv run python demo/run_session.py --num-agents 15 --max-iterations 200 --quiet
 ```
 
 Run the pool standalone:

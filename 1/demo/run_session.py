@@ -56,6 +56,10 @@ async def main() -> None:
                     help="pool port (0 = auto-select free port)")
     ap.add_argument("--token", default="APPROVED")
     ap.add_argument("--timeout", type=float, default=120.0)
+    ap.add_argument("--max-iterations", type=int, default=0,
+                    help="cap on critique_send count (0 = store default 200)")
+    ap.add_argument("--quiet", action="store_true",
+                    help="print only the final session summary")
     args = ap.parse_args()
 
     store = PoolStore()
@@ -68,7 +72,10 @@ async def main() -> None:
     try:
         session = await pool.create_session(args.goal)
         session_id = session["id"]
-        print(f"session {session_id} created")
+        if args.max_iterations:
+            store.get_session(session_id).maxIterations = args.max_iterations
+        print(f"session {session_id} created  N={args.num_agents}  "
+              f"maxIterations={store.get_session(session_id).maxIterations}")
 
         procs = []
         for i in range(args.num_agents):
@@ -84,7 +91,8 @@ async def main() -> None:
                 stderr=asyncio.subprocess.STDOUT))
 
         started = await asyncio.gather(*procs)
-        print(f"started {len(started)} simulated agents")
+        if not args.quiet:
+            print(f"started {len(started)} simulated agents")
 
         async def _read(p):
             out, _ = await p.communicate()
@@ -100,24 +108,32 @@ async def main() -> None:
             print("TIMEOUT waiting for agents")
             outputs = []
 
-        for out in outputs:
-            for line in out.splitlines():
-                print(f"    {line}")
+        if not args.quiet:
+            for out in outputs:
+                for line in out.splitlines():
+                    print(f"    {line}")
 
         st = await pool.session_status(session_id)
+        n_crit = sum(1 for ev in st["activity"] if ev["type"] == "critique")
+        n_fin = sum(1 for ev in st["activity"] if ev["type"] == "finished")
         print("\n== final session ==")
         print(f"state       : {st['state']}")
         print(f"iteration   : {st['iteration']}")
-        print(f"members     : {st['members']}")
-        print(f"satisfaction: {st['satisfaction']}")
+        print(f"critiques   : {n_crit}")
+        print(f"finished    : {n_fin}")
+        print(f"members     : {len(st['members'])}")
         print(f"failedReason: {st.get('failedReason')}")
-        print("\n== activity log ==")
-        for ev in st["activity"]:
-            target = f" -> {ev['targetAgentId']}" if ev.get("targetAgentId") else ""
-            print(f"  {ev['seq']:>3} {ev['type']:<18} {ev['agentId']}{target}  {ev['payload'][:60]}")
+        if not args.quiet:
+            print(f"satisfaction: {st['satisfaction']}")
+            print("\n== activity log ==")
+            for ev in st["activity"]:
+                target = f" -> {ev['targetAgentId']}" if ev.get("targetAgentId") else ""
+                print(f"  {ev['seq']:>3} {ev['type']:<18} {ev['agentId']}{target}  {ev['payload'][:60]}")
 
         ok = st["state"] == "satisfied"
-        print(f"\nRESULT: {'PASS' if ok else 'FAIL'}")
+        print(f"\nRESULT: {'PASS' if ok else 'FAIL'}  "
+              f"N={args.num_agents} N(N-1)={args.num_agents*(args.num_agents-1)} "
+              f"iter={st['iteration']}")
     finally:
         await pool.aclose()
         pool_server.should_exit = True

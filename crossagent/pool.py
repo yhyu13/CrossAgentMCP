@@ -69,6 +69,7 @@ class Session(BaseModel):
     members: list[str] = Field(default_factory=list)
     state: str = "forming"
     iteration: int = 0
+    maxCritiques: int = 200
     startTs: str = Field(default_factory=now_iso)
     satisfaction: dict[str, bool | None] = Field(default_factory=dict)
     activityLog: list[ActivityEvent] = Field(default_factory=list)
@@ -110,10 +111,12 @@ class PoolStore:
 
     # -- sessions --
     def create_session(self, goal: str, members: list[str] | None = None,
-                       session_id: str | None = None) -> Session:
+                       session_id: str | None = None,
+                       max_critiques: int = 200) -> Session:
         s = Session(id=session_id or str(uuid.uuid4()), goal=goal,
                     members=list(members or []),
-                    satisfaction={m: None for m in (members or [])})
+                    satisfaction={m: None for m in (members or [])},
+                    maxCritiques=max_critiques)
         self.sessions[s.id] = s
         self._seq[s.id] = 0
         return s
@@ -178,6 +181,8 @@ class PoolStore:
         s = self.sessions.get(session_id)
         if not s:
             return None
+        if s.state == "failed":
+            return None  # terminal: a failed session accepts no new critiques
         thread = CritiqueThread(sessionId=session_id, targetAgentId=target_agent,
                                 authorAgentId=from_agent, targetSeq=target_seq,
                                 history=[{"role": from_agent, "text": text}])
@@ -186,9 +191,12 @@ class PoolStore:
         # re-confirm after fixing before the session can converge (satisfaction is
         # not sticky across a critique aimed at them).
         s.satisfaction[target_agent] = None
+        s.iteration += 1
         self.post_activity(session_id, from_agent, "critique",
                            payload={"critiqueId": thread.id, "text": text},
                            target_agent_id=target_agent)
+        if s.iteration >= s.maxCritiques:
+            self.mark_failed(session_id, f"max critiques reached ({s.maxCritiques})")
         return thread
 
     def resolve_critique(self, session_id: str, critique_id: str,
@@ -378,7 +386,8 @@ def make_pool_app(store: PoolStore, agents: dict[str, str] | None = None,
             # -- sessions --
             if method == "SessionCreate":
                 s = store.create_session(params.get("goal", ""), params.get("members"),
-                                         params.get("sessionId"))
+                                         params.get("sessionId"),
+                                         params.get("maxCritiques", 200))
                 return ok(s.model_dump(exclude_none=True))
             if method == "SessionJoin":
                 if (r := _authz(params["agentId"])):
