@@ -317,8 +317,11 @@ drafts without satisfying, round 2 reviews + satisfies.
 
 - **Wall**: N=30 serial 1.87 s vs parallel 0.17 s vs 2-round 0.33 s; `max_conc=30`
   confirmed. Parallel wall ≈ slowest turn + overhead, not Σ. Time is not ×N.
-- **Serial cost is quadratic**: the last agent sees ~N finished events, so the whole
-  session re-bills ~N²/2 event-bytes. Measured, not extrapolated.
+- **Serial LAW** (not a table): \(p_\Sigma \approx N\cdot p_0 + \hat{e}\cdot N(N-1)/2\)
+  with \(p_0 \approx 941 + 27.57(N-1)\), \(\hat{e} \approx 2815\) B/finished-peer
+  (stable 2813→2818 across N=3..30). log-log α=2.05, R²=0.99994. Hold-out: fit
+  N=3,8,15 → predict N=30 at −0.16% (1,275,950 vs 1,278,014). This is the
+  accounting identity "agent i re-reads i−1 peers", not a curve fit.
 - **Parallel round-1 cost is `N × p0` exactly** — but p0 is not a constant. It carries
   the full roster (~27 B/agent), so `pΣ_r1 ≈ 941N + 27.6·N(N−1)`. "Cost ~ N per round"
   is wrong; it is N × an O(N) roster, already visibly superlinear.
@@ -395,6 +398,25 @@ agent for every sibling's artifact. The two real quadratic costs are log re-read
 
 ---
 
+## 2026-08-22 — The product is done; the story wasn't
+
+After the cap landed and docs were pushed (`9700288`), the thread felt like four
+projects at once. Orientation, then a priority call, then this dump.
+
+| ME | YOU |
+|---|---|
+| verify the critique-cap change | Independently ran 29 tests green. Cap + orchestrator-stop hold. Accounting nit: HEAD was 26 tests, working tree added 3 (not "27+2"). No functional fix. |
+| update all docs and push | Synced README / JOURNEY / `1/` / 知乎 to 29 tests, three guards, `1/` freeze. Committed `9700288`, pushed `origin/main`. |
+| where are we? 朝向何方，有点混乱 | Product is at the station (vision 3 things: demoable, testable, measurable, can stop). Chaos was measurement + narrative tangled. Open product boxes: none. Persistence and the parked M4_kimi 8 threads are not interview work. |
+| 理清楚最应该做的是，优先级 | **P0 = 知乎终稿** (one thesis / one set of numbers / one hole). P1 = 15-min README door check. P2 = stop. Do not add persistence, critique sharding, bigger N, or `1/` features. |
+| dump to journey, and do P0 | This section. 知乎 compressed to the three-beat story; `1/` / `maxCritiques` / 29 tests demoted to footnotes. |
+
+**Call that locked this session:** the pool solves *how to stop*, not *how to go
+faster*. The article keeps the original title as the hook; the N-scaling
+measurement is evidence, not a second essay.
+
+---
+
 ## Where it stands
 
 - [x] A2A pool control plane (registry / sessions / activity / critique / goal)
@@ -413,6 +435,10 @@ agent for every sibling's artifact. The two real quadratic costs are log re-read
 - [x] Scaling-law sweep (N=1..30 stubs, serial/parallel/parallel-2r) + `1/` critique-cap threshold
 - [x] Fix parallel `last_seen` artifact-drop (`parallelCursor="round"`; round-2 sees sibling artifacts, measured 1.88× serial)
 - [x] Root critique cap (`maxCritiques`, default 200) + orchestrator stops on pool-initiated `failed`
-- [ ] Long-term state persistence (pool is in-memory, resets on restart)
-- [ ] A run where the writer actually *resolves* the 8 open M4_kimi critique threads
 - [x] Freeze `1/` — critique-cap lesson folded into root `maxCritiques`
+- [x] 知乎终稿收口（一个论点 / 一组数字 / 一个洞）
+
+Open items (not product work — parked):
+
+- [ ] Long-term state persistence (pool is in-memory, resets on restart) — interview demo does not need this
+- [ ] A run where the writer actually *resolves* the 8 open M4_kimi critique threads — an unfinished live run, not a gap

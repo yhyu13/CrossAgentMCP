@@ -119,16 +119,17 @@ async def test_parallel_schedule_persists_successes_when_an_agent_fails(pool):
     state["sid"] = await orch.create_session()
     with pytest.raises(RuntimeError, match="boom"):
         await orch.run()
-    assert orch.last_seen["a"] > 0
-    assert orch.last_seen["c"] > 0
-    assert orch.last_seen["b"] == 0
+    # Sibling successes are persisted to the pool even though the round failed.
+    # (The round cursor resets orch.last_seen, so assert on the pool's own log.)
+    events = await pool.activity_since(state["sid"], 0)
+    finished = {e["agentId"] for e in events if e["type"] == "finished"}
+    assert finished == {"a", "c"}
     assert (await pool.session_status(state["sid"]))["state"] == "failed"
 
 
-async def test_parallel_round_cursor_next_round_sees_sibling_artifacts(pool):
-    # Default last_seen=finished-seq skips sibling artifacts posted during
-    # gather. parallelCursor="round" restores the pre-round cursor so the
-    # next round's prompt contains those artifacts.
+async def test_parallel_default_cursor_next_round_sees_sibling_artifacts(pool):
+    # Default parallelCursor="round" restores the pre-round cursor so the
+    # next round's prompt contains sibling artifacts posted during gather.
     state = {"sid": None, "calls": {}}
     marker = "SIBLING_ARTIFACT_MARKER"
 
@@ -144,12 +145,39 @@ async def test_parallel_round_cursor_next_round_sees_sibling_artifacts(pool):
 
     config = _config([{"id": "a"}, {"id": "b"}, {"id": "c"}], max_turns=9)
     config["schedule"] = "parallel"
-    config["parallelCursor"] = "round"
     orch = Orchestrator(config, pool, agent_runner=runner)
+    assert orch.parallel_cursor == "round"
     state["sid"] = await orch.create_session()
     status = await orch.run()
     assert status["allSatisfied"] is True
     assert all(state["calls"][i] >= 2 for i in ("a", "b", "c"))
+
+
+async def test_parallel_finish_cursor_drops_sibling_artifacts(pool):
+    # Opt-out parallelCursor="finish" is the old bug: last_seen jumps to each
+    # agent's own finished seq, so round-2 never sees sibling artifacts.
+    state = {"sid": None, "calls": {}, "missed": []}
+    marker = "SIBLING_ARTIFACT_MARKER"
+
+    async def runner(agent, prompt):
+        k = state["calls"][agent["id"]] = state["calls"].get(agent["id"], 0) + 1
+        if k >= 2:
+            if marker not in prompt:
+                state["missed"].append(agent["id"])
+            await pool.declare_satisfaction(state["sid"], agent["id"], True, "ok")
+        else:
+            await pool.post_activity(state["sid"], agent["id"], "artifact",
+                                     {"note": marker})
+        return f"{agent['id']} r{k}"
+
+    config = _config([{"id": "a"}, {"id": "b"}, {"id": "c"}], max_turns=9)
+    config["schedule"] = "parallel"
+    config["parallelCursor"] = "finish"
+    orch = Orchestrator(config, pool, agent_runner=runner)
+    state["sid"] = await orch.create_session()
+    status = await orch.run()
+    assert status["allSatisfied"] is True
+    assert state["missed"], "finish cursor should drop sibling artifacts"
 
 
 async def test_max_critiques_pool_failure_stops_orchestrator(pool):

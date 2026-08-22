@@ -8,8 +8,9 @@ Zero LLM. Sweeps N × {serial, parallel, parallel-2r}:
                  (this is the coordination round the 1-round parallel never pays)
 
 Records prompt bytes (the context-bloat law) and wall. Reports:
+  - serial LAW: pΣ ≈ N·p0 + ê·N(N−1)/2, plus log-log α/R² and hold-out
   - closed form p0 ≈ a + b(N−1), pΣ_parallel_r1 ≈ N(a + b(N−1))
-  - rolling-window α for prompt_sum (not a single global exponent)
+  - rolling-window α for prompt_sum
   - measured round-2 prompt bytes (not extrapolated)
 
 Run:  uv run python demo/scale_n.py
@@ -195,8 +196,34 @@ def _rolling_alpha(subset: list[Point], attr: str) -> list[str]:
     return lines
 
 
+def _holdout_serial(ser: list[Point]) -> str | None:
+    """Fit ê and p0 on all but the largest N; predict that N."""
+    if len(ser) < 3:
+        return None
+    hold, train = ser[-1], ser[:-1]
+    e_vals = []
+    for p in train:
+        pairs = p.n * (p.n - 1) / 2
+        if pairs > 0:
+            e_vals.append((p.prompt_sum - p.n * p.prompt_first) / pairs)
+    if not e_vals:
+        return None
+    e_hat = sum(e_vals) / len(e_vals)
+    fit = _fit_linear([float(p.n - 1) for p in train],
+                      [float(p.prompt_first) for p in train])
+    if not fit:
+        return None
+    a, b = fit
+    p0 = a + b * (hold.n - 1)
+    pred = hold.n * p0 + e_hat * hold.n * (hold.n - 1) / 2
+    err = 100.0 * (pred - hold.prompt_sum) / hold.prompt_sum
+    return (f"hold-out: fit N={','.join(str(p.n) for p in train)} → "
+            f"predict N={hold.n}  pΣ={pred:.0f} vs {hold.prompt_sum}  "
+            f"err={err:+.3f}%")
+
+
 def _analysis(points: list[Point]) -> list[str]:
-    lines: list[str] = ["", "--- closed form + rolling α (not a single global exponent) ---"]
+    lines: list[str] = ["", "--- closed form + global α + hold-out ---"]
 
     par = [p for p in points if p.schedule == "parallel" and p.n >= 3]
     if len(par) >= 2:
@@ -209,6 +236,11 @@ def _analysis(points: list[Point]) -> list[str]:
                          f"→ pΣ_r1 ≈ N·({a:.0f} + {b:.1f}(N−1)) = {a:.0f}N + {b:.1f}N(N−1)")
             lines.append("  (roster is O(N) per prompt × N agents = O(N²); "
                          "local α rises toward 2)")
+            gl = _fit_loglog([float(p.n) for p in par],
+                             [float(p.prompt_sum) for p in par])
+            if gl:
+                lines.append(f"  log-log α={gl[0]:.3f} R²={gl[1]:.5f}  "
+                             "(α<2 while the constant term still dominates)")
             lines.append("  rolling α(parallel prompt_sum):")
             lines.extend(_rolling_alpha(par, "prompt_sum"))
 
@@ -222,8 +254,20 @@ def _analysis(points: list[Point]) -> list[str]:
                 continue
             e_vals.append((p.prompt_sum - p.n * p.prompt_first) / pairs)
         e_hat = sum(e_vals) / len(e_vals) if e_vals else 0.0
-        lines.append(f"serial event-bytes ê ≈ {e_hat:.0f} B/finished-peer  "
-                     f"(pΣ ≈ N·p0 + ê·N(N−1)/2)")
+        p0_fit = _fit_linear([float(p.n - 1) for p in ser],
+                             [float(p.prompt_first) for p in ser])
+        p0_s = (f"p0 ≈ {p0_fit[0]:.0f} + {p0_fit[1]:.2f}(N−1)"
+                if p0_fit else "p0 = ?")
+        gl = _fit_loglog([float(p.n) for p in ser],
+                         [float(p.prompt_sum) for p in ser])
+        gl_s = f"α={gl[0]:.3f} R²={gl[1]:.5f}" if gl else "α=?"
+        lines.append(f"serial LAW: pΣ ≈ N·p0 + ê·N(N−1)/2")
+        lines.append(f"  {p0_s}   ê ≈ {e_hat:.0f} B/finished-peer  "
+                     f"(per-N ê: {', '.join(f'{e:.0f}' for e in e_vals)})")
+        lines.append(f"  log-log {gl_s}")
+        ho = _holdout_serial(ser)
+        if ho:
+            lines.append(f"  {ho}")
         lines.append("  rolling α(serial prompt_sum):")
         lines.extend(_rolling_alpha(ser, "prompt_sum"))
 
@@ -241,6 +285,14 @@ def _analysis(points: list[Point]) -> list[str]:
                 f"  N={p.n:>2}  r1Σ={p.prompt_r1_sum:>8}  r2Σ={p.prompt_r2_sum:>8}  "
                 f"r2/r1={ratio:.2f}  (r1+r2)/serial={vs_ser:.2f}  "
                 f"r2_p0={p.prompt_r2_first} r2_pN={p.prompt_r2_last}")
+        gl = _fit_loglog([float(p.n) for p in two],
+                         [float(p.prompt_sum) for p in two])
+        gl2 = _fit_loglog([float(p.n) for p in two],
+                          [float(p.prompt_r2_sum) for p in two])
+        if gl:
+            lines.append(f"  log-log (r1+r2) α={gl[0]:.3f} R²={gl[1]:.5f}")
+        if gl2:
+            lines.append(f"  log-log (r2Σ)   α={gl2[0]:.3f} R²={gl2[1]:.5f}")
         lines.append(f"  rolling α({key} prompt_sum = r1+r2):")
         lines.extend(_rolling_alpha(two, "prompt_sum"))
         lines.append(f"  rolling α({key} r2Σ only):")

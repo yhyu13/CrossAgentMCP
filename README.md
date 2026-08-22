@@ -178,7 +178,7 @@ make demo        # 完整无头 3-agent demo（writer / critic / lead）——�
 编排器支持 `schedule: "serial"`（默认）与 `"parallel"`：并行模式每轮让所有 agent 在
 同一 pre-round 快照上并发工作（bulk-synchronous），一轮计 `len(agents)` 次 run，与串行
 模式的轮次预算可比。在 `goal.json` 加 `"schedule": "parallel"` 即可切换。并行模式下
-可用 `"parallelCursor": "round"` 让下一轮看到同伴的产出（默认 `"finish"`，不重喂）；
+默认 `"parallelCursor": "round"`（下一轮看到同伴产出）。`"finish"` 是旧行为，不重喂，两轮并行会看起来很便宜——因为根本没 review。
 `"maxCritiques"`（默认 200）限制批判总数，超限判 `failed`。
 
 ### Demo 目标

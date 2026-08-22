@@ -112,14 +112,15 @@ class Orchestrator:
         self.session_id: str | None = None
         self.last_seen: dict[str, int] = {a["id"]: 0 for a in self.agents}
         # parallelCursor:
-        #   "finish" (default) — last_seen jumps to this agent's own finished seq
-        #                        after the round. Sibling artifacts posted during
-        #                        gather sit at lower seq and are skipped next round.
-        #   "round"            — snapshot last_seen before gather; after the round
+        #   "round"  (default) — snapshot last_seen before gather; after the round
         #                        restore every agent to that pre-round cursor so the
         #                        next round sees all sibling artifacts + finished
-        #                        events.
-        self.parallel_cursor: str = config.get("parallelCursor", "finish")
+        #                        events. This is the correct-review default.
+        #   "finish"           — last_seen jumps to this agent's own finished seq
+        #                        after the round. Sibling artifacts posted during
+        #                        gather sit at lower seq and are skipped next round
+        #                        (the bug that made 2-round parallel look 0.18× cheap).
+        self.parallel_cursor: str = config.get("parallelCursor", "round")
         if self.parallel_cursor not in ("finish", "round"):
             raise ValueError(
                 f"unknown parallelCursor {self.parallel_cursor!r} "
